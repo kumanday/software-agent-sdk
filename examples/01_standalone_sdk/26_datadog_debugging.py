@@ -28,6 +28,7 @@ import json
 import os
 import subprocess
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from pydantic import SecretStr
@@ -77,10 +78,10 @@ def validate_environment():
 
 def fetch_datadog_errors(query: str, working_dir: Path, limit: int = 5) -> Path:
     """
-    Fetch error examples from Datadog and save to a JSON file.
+    Fetch error examples from Datadog Error Tracking and save to a JSON file.
 
     Args:
-        query: Datadog query string
+        query: Datadog query string (can be error tracking query or issue ID)
         working_dir: Directory to save the error examples
         limit: Maximum number of error examples to fetch (default: 5)
 
@@ -91,30 +92,39 @@ def fetch_datadog_errors(query: str, working_dir: Path, limit: int = 5) -> Path:
     dd_app_key = os.getenv("DD_APP_KEY")
     dd_site = os.getenv("DD_SITE", "datadoghq.com")
 
-    # Construct API URL
-    api_url = f"https://api.{dd_site}/api/v2/logs/events/search"
+    # Use Error Tracking Search API
+    api_url = f"https://api.{dd_site}/api/v2/error-tracking/issues/search"
 
-    # Build the request body
+    # Calculate timestamps (30 days back)
+    now = int(datetime.now().timestamp() * 1000)
+    thirty_days_ago = int((datetime.now() - timedelta(days=30)).timestamp() * 1000)
+
+    # Build the request body for Error Tracking API
     request_body = {
-        "filter": {
-            "query": query,
-            "from": "now-7d",  # Last 7 days
-            "to": "now",
-        },
-        "sort": "timestamp",
-        "page": {"limit": limit},
+        "data": {
+            "attributes": {
+                "query": query,
+                "from": thirty_days_ago,
+                "to": now,
+                "track": "logs",  # Track errors from logs
+            },
+            "type": "search_request",
+        }
     }
 
-    print(f"📡 Fetching up to {limit} error examples from Datadog...")
+    print(f"📡 Fetching up to {limit} error tracking issues from Datadog...")
     print(f"   Query: {query}")
     print(f"   API: {api_url}")
+
+    # Add include parameter to get full issue details
+    api_url_with_include = f"{api_url}?include=issue"
 
     # Use curl to fetch data
     curl_cmd = [
         "curl",
         "-X",
         "POST",
-        api_url,
+        api_url_with_include,
         "-H",
         "Content-Type: application/json",
         "-H",
@@ -145,20 +155,41 @@ def fetch_datadog_errors(query: str, working_dir: Path, limit: int = 5) -> Path:
         print(f"   Response: {result.stdout[:500]}")
         sys.exit(1)
 
-    # Extract and format error examples
+    # Check for API errors
+    if "errors" in response_data:
+        print(f"❌ Datadog API error: {response_data['errors']}")
+        sys.exit(1)
+
+    # Extract and format error tracking issues
     error_examples = []
-    if "data" in response_data:
-        for idx, log_entry in enumerate(response_data["data"][:limit], 1):
-            attributes = log_entry.get("attributes", {})
+    search_results = response_data.get("data", [])
+    included_details = {item["id"]: item for item in response_data.get("included", [])}
+
+    if search_results:
+        for idx, search_result in enumerate(search_results[:limit], 1):
+            issue_id = search_result.get("id")
+            search_attrs = search_result.get("attributes", {})
+
+            # Get detailed issue info from included section
+            issue_details = included_details.get(issue_id, {})
+            issue_attrs = issue_details.get("attributes", {})
+
             error_example = {
                 "example_number": idx,
-                "timestamp": attributes.get("timestamp"),
-                "status": attributes.get("status"),
-                "service": attributes.get("service"),
-                "message": attributes.get("message", ""),
-                "error": attributes.get("error", {}),
-                "tags": attributes.get("tags", []),
-                "attributes": attributes.get("attributes", {}),
+                "issue_id": issue_id,
+                "total_count": search_attrs.get("total_count"),
+                "impacted_users": search_attrs.get("impacted_users"),
+                "impacted_sessions": search_attrs.get("impacted_sessions"),
+                "service": issue_attrs.get("service"),
+                "error_type": issue_attrs.get("error_type"),
+                "error_message": issue_attrs.get("error_message", ""),
+                "file_path": issue_attrs.get("file_path"),
+                "function_name": issue_attrs.get("function_name"),
+                "first_seen": issue_attrs.get("first_seen"),
+                "last_seen": issue_attrs.get("last_seen"),
+                "state": issue_attrs.get("state"),
+                "platform": issue_attrs.get("platform"),
+                "languages": issue_attrs.get("languages", []),
             }
             error_examples.append(error_example)
 
@@ -185,36 +216,50 @@ def create_debugging_prompt(query: str, repos: list[str], errors_file: Path) -> 
     """Create the debugging prompt for the agent."""
     repos_list = "\n".join(f"- {repo}" for repo in repos)
     dd_site = os.getenv("DD_SITE", "datadoghq.com")
-    api_url = f"https://api.{dd_site}/api/v2/logs/events/search"
+    error_tracking_url = f"https://api.{dd_site}/api/v2/error-tracking/issues/search"
+    logs_url = f"https://api.{dd_site}/api/v2/logs/events/search"
 
     prompt = (
-        "Your task is to debug an error from Datadog logs to find out why it "
-        "is happening.\n\n"
-        "## Error Examples\n\n"
-        f"I have already fetched several examples of this error and saved them "
-        f"to: `{errors_file}`\n\n"
+        "Your task is to debug an error from Datadog Error Tracking to find "
+        "out why it is happening.\n\n"
+        "## Error Tracking Issues\n\n"
+        f"I have already fetched error tracking issues and saved them to: "
+        f"`{errors_file}`\n\n"
         "This JSON file contains:\n"
         "- `query`: The Datadog query used to fetch these errors\n"
-        "- `total_examples`: Number of error examples in the file\n"
-        "- `examples`: Array of error instances, where each example has:\n"
-        "  - `example_number`: Sequential number (1, 2, 3, ...)\n"
-        "  - `timestamp`: When the error occurred (ISO 8601 format)\n"
-        "  - `status`: Log status (e.g., 'error', 'warning')\n"
-        "  - `service`: Service name where the error occurred\n"
-        "  - `message`: Full error message/log content\n"
-        "  - `error`: Error details including stack traces if available\n"
-        "  - `tags`: Array of tags associated with the log\n"
-        "  - `attributes`: Additional attributes and metadata\n\n"
+        "- `total_examples`: Number of error tracking issues in the file\n"
+        "- `examples`: Array of error tracking issues, where each has:\n"
+        "  - `issue_id`: Unique identifier for the aggregated error issue\n"
+        "  - `total_count`: Total number of error occurrences\n"
+        "  - `impacted_users`: Number of users affected\n"
+        "  - `service`: Service name where errors occurred\n"
+        "  - `error_type`: Type of error (e.g., exception class)\n"
+        "  - `error_message`: Error message text\n"
+        "  - `file_path`: Source file where error occurred\n"
+        "  - `function_name`: Function where error occurred\n"
+        "  - `first_seen`: Timestamp when first seen (milliseconds)\n"
+        "  - `last_seen`: Timestamp when last seen (milliseconds)\n"
+        "  - `state`: Issue state (OPEN, ACKNOWLEDGED, RESOLVED, etc.)\n\n"
         "**First, read this file** using str_replace_editor to understand the "
-        "error patterns. Look at multiple examples to find common patterns.\n\n"
+        "error patterns. Error Tracking aggregates similar errors together, so "
+        "each issue may represent many occurrences.\n\n"
         "## Additional Context\n\n"
         f"The original Datadog query was: `{query}`\n\n"
-        "If you need more details from Datadog, you can use the Datadog API "
-        "via curl commands with your DD_API_KEY and DD_APP_KEY environment "
-        "variables.\n\n"
-        "To query additional logs, use the Logs API:\n"
+        "If you need more details, you can use Datadog APIs via curl commands "
+        "with $DD_API_KEY and $DD_APP_KEY environment variables.\n\n"
+        "To search for more error tracking issues:\n"
         "```bash\n"
-        f"curl -X POST '{api_url}' \\\n"
+        f"curl -X POST '{error_tracking_url}' \\\n"
+        "  -H 'Content-Type: application/json' \\\n"
+        "  -H 'DD-API-KEY: $DD_API_KEY' \\\n"
+        "  -H 'DD-APPLICATION-KEY: $DD_APP_KEY' \\\n"
+        '  -d \'{"data": {"attributes": {"query": "service:YOUR_SERVICE", '
+        '"from": <timestamp_ms>, "to": <timestamp_ms>, "track": "logs"}, '
+        '"type": "search_request"}}\'\n'
+        "```\n\n"
+        "To query individual log entries, use the Logs API:\n"
+        "```bash\n"
+        f"curl -X POST '{logs_url}' \\\n"
         "  -H 'Content-Type: application/json' \\\n"
         "  -H 'DD-API-KEY: $DD_API_KEY' \\\n"
         "  -H 'DD-APPLICATION-KEY: $DD_APP_KEY' \\\n"

@@ -24,10 +24,8 @@ logger = get_logger(__name__)
 class LLMWithGateway(LLM):
     """LLM subclass with enterprise gateway support.
 
-    Supports adding custom headers on each request with optional template
-    rendering against LLM attributes. If you include ``{{llm_api_key}}`` in a
-    header value, the decrypted API key is sent to the gateway—treat the
-    gateway as a trusted recipient and avoid logging those headers.
+    Supports adding static custom headers on each request. Take care not to include
+    raw secrets in headers unless the gateway is trusted and headers are never logged.
     """
 
     custom_headers: dict[str, str] | None = Field(
@@ -41,10 +39,6 @@ class LLMWithGateway(LLM):
         if not self.custom_headers:
             return prepared
 
-        rendered = self._render_templates(self.custom_headers)
-        if not isinstance(rendered, dict):
-            return prepared
-
         existing = prepared.get("extra_headers")
         base_headers: dict[str, Any]
         if isinstance(existing, Mapping):
@@ -54,7 +48,7 @@ class LLMWithGateway(LLM):
         else:
             base_headers = {}
 
-        merged, collisions = self._merge_headers(base_headers, rendered)
+        merged, collisions = self._merge_headers(base_headers, self.custom_headers)
         for header, old_val, new_val in collisions:
             logger.warning(
                 "LLMWithGateway overriding header %s (existing=%r, new=%r)",
@@ -95,38 +89,3 @@ class LLMWithGateway(LLM):
                 lower_map[lower] = key
 
         return merged, collisions
-
-    def _render_templates(self, value: Any) -> Any:
-        """Replace template variables in strings with actual values.
-
-        Supports:
-        - {{llm_model}} -> self.model
-        - {{llm_base_url}} -> self.base_url
-        - {{llm_api_key}} -> self.api_key (if set)
-
-        Args:
-            value: String, dict, list, or other value to render.
-
-        Returns:
-            Value with templates replaced.
-        """
-        if isinstance(value, str):
-            replacements: dict[str, str] = {
-                "{{llm_model}}": self.model,
-                "{{llm_base_url}}": self.base_url or "",
-            }
-            if self.api_key:
-                replacements["{{llm_api_key}}"] = self.api_key.get_secret_value()
-
-            result = value
-            for placeholder, actual in replacements.items():
-                result = result.replace(placeholder, actual)
-            return result
-
-        if isinstance(value, dict):
-            return {k: self._render_templates(v) for k, v in value.items()}
-
-        if isinstance(value, list):
-            return [self._render_templates(v) for v in value]
-
-        return value

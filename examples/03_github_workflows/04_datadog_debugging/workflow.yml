@@ -17,7 +17,6 @@ on:
                     Datadog query (search query for log-query mode,
                     or error tracking ID for log-error-id mode)
                 required: true
-                default: service:deploy ClientDisconnect
             repo_list:
                 description: Comma-separated list of repositories to clone (owner/repo)
                 required: true

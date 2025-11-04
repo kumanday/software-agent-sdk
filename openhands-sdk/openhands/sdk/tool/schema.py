@@ -1,7 +1,8 @@
 import json
+import types
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, ClassVar, TypeVar, get_args, get_origin
+from typing import Annotated, Any, ClassVar, TypeVar, Union, get_args, get_origin
 
 from pydantic import ConfigDict, Field, create_model, model_validator
 from rich.text import Text
@@ -122,24 +123,37 @@ class Schema(DiscriminatedUnionMixin):
         if not isinstance(data, dict):
             return data
 
-        # Get the model's field annotations
-        annotations = getattr(cls, "__annotations__", {})
-
-        for field_name, value in data.items():
-            # Skip if value is not a string or field not in annotations
-            if not isinstance(value, str) or field_name not in annotations:
+        # Use model_fields to properly handle aliases and inherited fields
+        for field_name, field_info in cls.model_fields.items():
+            # Check both the field name and its alias (if any)
+            data_key = field_info.alias if field_info.alias else field_name
+            if data_key not in data:
                 continue
 
-            expected_type = annotations[field_name]
+            value = data[data_key]
+            # Skip if value is not a string
+            if not isinstance(value, str):
+                continue
 
-            # Get all possible types (handles unions and simple types uniformly)
-            type_args = get_args(expected_type)
-            if type_args:
-                # Union or generic type - extract origins from all args
+            expected_type = field_info.annotation
+
+            # Unwrap Annotated types - only the first arg is the actual type
+            if get_origin(expected_type) is Annotated:
+                type_args = get_args(expected_type)
+                expected_type = type_args[0] if type_args else expected_type
+
+            # Get the origin of the expected type (e.g., list from list[str])
+            origin = get_origin(expected_type)
+
+            # For Union types, we need to check all union members
+            if origin is Union or (
+                hasattr(types, "UnionType") and origin is types.UnionType
+            ):
+                # For Union types, check each union member
+                type_args = get_args(expected_type)
                 expected_origins = [get_origin(arg) or arg for arg in type_args]
             else:
-                # Simple type - use origin or the type itself
-                origin = get_origin(expected_type)
+                # For non-Union types, just check the origin
                 expected_origins = [origin or expected_type]
 
             # Check if any of the expected types is list or dict
@@ -150,7 +164,7 @@ class Schema(DiscriminatedUnionMixin):
                     # json.loads() returns dict, list, str, int, float, bool, or None
                     # Only use parsed value if it matches expected collection types
                     if isinstance(parsed_value, (list, dict)):
-                        data[field_name] = parsed_value
+                        data[data_key] = parsed_value
                 except (json.JSONDecodeError, ValueError):
                     # If parsing fails, leave the original value
                     # Pydantic will raise validation error if needed

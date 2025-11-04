@@ -90,19 +90,21 @@ RESPONSES_API_PATTERNS: list[str] = [
 # Models that require string serializer for tool messages
 # These models don't support structured content format [{"type":"text","text":"..."}]
 # and need plain strings instead
+# NOTE: model_matches uses case-insensitive substring matching, not globbing.
+#       Keep these entries as bare substrings without wildcards.
 FORCE_STRING_SERIALIZER_PATTERNS: list[str] = [
-    "deepseek",
-    "groq/kimi-k2-instruct",
-    "glm-4",
+    "deepseek",  # e.g., DeepSeek-V3.2-Exp
+    "glm-4",  # e.g., GLM-4.5 / GLM-4.6
+    # Kimi K2-Instruct requires string serialization only on Groq
+    "groq/kimi-k2-instruct",  # explicit provider-prefixed IDs
 ]
-
 
 # Models that return tool call arguments with arrays/objects as JSON strings
 # instead of properly structured data (e.g., "[1, 100]" instead of [1, 100])
 # This causes Pydantic validation errors when parsing tool arguments
 # These models need recursive JSON string parsing in their arguments
 FUNCTION_ARGS_AS_JSON_STRINGS_PATTERNS: list[str] = [
-    "glm-4",
+    "glm-4",  # e.g., GLM-4.5 / GLM-4.6
 ]
 
 

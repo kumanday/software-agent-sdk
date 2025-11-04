@@ -1,8 +1,10 @@
+import json
+import types
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, ClassVar, TypeVar
+from typing import Any, ClassVar, TypeVar, Union, get_args, get_origin
 
-from pydantic import ConfigDict, Field, create_model
+from pydantic import ConfigDict, Field, create_model, model_validator
 from rich.text import Text
 
 from openhands.sdk.llm import ImageContent, TextContent
@@ -99,6 +101,75 @@ class Schema(DiscriminatedUnionMixin):
     """Base schema for input action / output observation."""
 
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", frozen=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _decode_json_strings(cls, data: Any) -> Any:
+        """Pre-validator that automatically decodes JSON strings for list/dict fields.
+
+        This validator runs before field validation and checks if any field that
+        expects a list or dict type has received a JSON string instead. If so,
+        it automatically decodes the string using json.loads().
+
+        This handles cases where LLMs (like GLM-4) return array/object values
+        as JSON strings instead of native JSON arrays/objects.
+
+        Args:
+            data: The input data (usually a dict) before validation.
+
+        Returns:
+            The data with JSON strings decoded where appropriate.
+        """
+        if not isinstance(data, dict):
+            return data
+
+        # Get the model's field annotations
+        annotations = getattr(cls, "__annotations__", {})
+
+        for field_name, value in list(data.items()):
+            # Skip if value is not a string
+            if not isinstance(value, str):
+                continue
+
+            # Get the expected type for this field
+            if field_name not in annotations:
+                continue
+
+            expected_type = annotations[field_name]
+
+            # Check if the expected type is a list or dict
+            # Handle Union types (e.g., list | None, Optional[list])
+            origin = get_origin(expected_type)
+
+            # Check for Union types (handles both typing.Union and | syntax)
+            is_union = origin is Union
+            # Python 3.10+ has types.UnionType for | syntax
+            if hasattr(types, "UnionType") and origin is types.UnionType:
+                is_union = True
+
+            if is_union:
+                # For Union types, check all args
+                type_args = get_args(expected_type)
+                expected_origins = [get_origin(arg) or arg for arg in type_args]
+            else:
+                expected_origins = [origin or expected_type]
+
+            # Check if any of the expected types is list or dict
+            expects_list_or_dict = any(exp in (list, dict) for exp in expected_origins)
+
+            if expects_list_or_dict:
+                # Try to parse the string as JSON
+                try:
+                    parsed_value = json.loads(value)
+                    # Only replace if we got a list or dict
+                    if isinstance(parsed_value, (list, dict)):
+                        data[field_name] = parsed_value
+                except (json.JSONDecodeError, ValueError):
+                    # If parsing fails, leave the original value
+                    # Pydantic will raise validation error if needed
+                    pass
+
+        return data
 
     @classmethod
     def to_mcp_schema(cls) -> dict[str, Any]:

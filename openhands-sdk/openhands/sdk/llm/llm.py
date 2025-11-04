@@ -70,7 +70,6 @@ from openhands.sdk.llm.message import (
     Message,
 )
 from openhands.sdk.llm.mixins.non_native_fc import NonNativeToolCallingMixin
-from openhands.sdk.llm.mixins.response_normalizer import ResponseNormalizerMixin
 from openhands.sdk.llm.options.chat_options import select_chat_options
 from openhands.sdk.llm.options.responses_options import select_responses_options
 from openhands.sdk.llm.utils.metrics import Metrics, MetricsSnapshot
@@ -101,7 +100,7 @@ SERVICE_ID_DEPRECATION_MSG = (
 )
 
 
-class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin, ResponseNormalizerMixin):
+class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
     """Language model interface for OpenHands agents.
 
     The LLM class provides a unified interface for interacting with various
@@ -534,9 +533,6 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin, ResponseNormalizerMi
         try:
             resp = _one_attempt()
 
-            # Normalize response for model-specific quirks (via mixin)
-            resp = self.normalize_chat_completion_response(resp)
-
             # Convert the first choice to an OpenHands Message
             first_choice = resp["choices"][0]
             message = Message.from_llm_chat_message(first_choice["message"])
@@ -658,9 +654,6 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin, ResponseNormalizerMi
 
         try:
             resp: ResponsesAPIResponse = _one_attempt()
-
-            # Normalize response for model-specific quirks (via mixin)
-            resp = self.normalize_responses_api_response(resp)
 
             # Parse output -> Message (typed)
             # Cast to a typed sequence

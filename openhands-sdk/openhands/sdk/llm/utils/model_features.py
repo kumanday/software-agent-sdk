@@ -23,7 +23,6 @@ class ModelFeatures:
     supports_stop_words: bool
     supports_responses_api: bool
     force_string_serializer: bool
-    args_as_json_strings: bool
 
 
 # Pattern tables capturing current behavior. Keep patterns lowercase.
@@ -99,14 +98,6 @@ FORCE_STRING_SERIALIZER_PATTERNS: list[str] = [
     "groq/kimi-k2-instruct",  # explicit provider-prefixed IDs
 ]
 
-# Models that return tool call arguments with arrays/objects as JSON strings
-# instead of properly structured data (e.g., "[1, 100]" instead of [1, 100])
-# This causes Pydantic validation errors when parsing tool arguments
-# These models need recursive JSON string parsing in their arguments
-FUNCTION_ARGS_AS_JSON_STRINGS_PATTERNS: list[str] = [
-    "glm-4",  # e.g., GLM-4.5 / GLM-4.6
-]
-
 
 def get_features(model: str) -> ModelFeatures:
     """Get model features."""
@@ -119,7 +110,4 @@ def get_features(model: str) -> ModelFeatures:
         ),
         supports_responses_api=model_matches(model, RESPONSES_API_PATTERNS),
         force_string_serializer=model_matches(model, FORCE_STRING_SERIALIZER_PATTERNS),
-        args_as_json_strings=model_matches(
-            model, FUNCTION_ARGS_AS_JSON_STRINGS_PATTERNS
-        ),
     )

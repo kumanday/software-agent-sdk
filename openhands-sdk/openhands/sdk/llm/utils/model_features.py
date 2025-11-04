@@ -23,6 +23,7 @@ class ModelFeatures:
     supports_stop_words: bool
     supports_responses_api: bool
     force_string_serializer: bool
+    args_as_json_strings: bool
 
 
 # Pattern tables capturing current behavior. Keep patterns lowercase.
@@ -92,13 +93,17 @@ RESPONSES_API_PATTERNS: list[str] = [
 FORCE_STRING_SERIALIZER_PATTERNS: list[str] = [
     "deepseek",
     "groq/kimi-k2-instruct",
+    "glm-4",
 ]
 
-# Models that don't support native tool calling
-# These models return tool call arguments with arrays/objects as JSON strings
+
+# Models that return tool call arguments with arrays/objects as JSON strings
 # instead of properly structured data (e.g., "[1, 100]" instead of [1, 100])
 # This causes Pydantic validation errors when parsing tool arguments
-NO_NATIVE_TOOL_CALLING_PATTERNS: list[str] = []
+# These models need recursive JSON string parsing in their arguments
+FUNCTION_ARGS_AS_JSON_STRINGS_PATTERNS: list[str] = [
+    "glm-4",
+]
 
 
 def get_features(model: str) -> ModelFeatures:
@@ -112,4 +117,7 @@ def get_features(model: str) -> ModelFeatures:
         ),
         supports_responses_api=model_matches(model, RESPONSES_API_PATTERNS),
         force_string_serializer=model_matches(model, FORCE_STRING_SERIALIZER_PATTERNS),
+        args_as_json_strings=model_matches(
+            model, FUNCTION_ARGS_AS_JSON_STRINGS_PATTERNS
+        ),
     )

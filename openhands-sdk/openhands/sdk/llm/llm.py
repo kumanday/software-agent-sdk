@@ -70,6 +70,7 @@ from openhands.sdk.llm.message import (
     Message,
 )
 from openhands.sdk.llm.mixins.non_native_fc import NonNativeToolCallingMixin
+from openhands.sdk.llm.mixins.response_normalizer import ResponseNormalizerMixin
 from openhands.sdk.llm.options.chat_options import select_chat_options
 from openhands.sdk.llm.options.responses_options import select_responses_options
 from openhands.sdk.llm.utils.metrics import Metrics, MetricsSnapshot
@@ -100,7 +101,7 @@ SERVICE_ID_DEPRECATION_MSG = (
 )
 
 
-class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
+class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin, ResponseNormalizerMixin):
     """Refactored LLM: simple `completion()`, centralized Telemetry, tiny helpers."""
 
     # =========================================================================
@@ -495,6 +496,9 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         try:
             resp = _one_attempt()
 
+            # Normalize response for model-specific quirks (via mixin)
+            resp = self.normalize_chat_completion_response(resp)
+
             # Convert the first choice to an OpenHands Message
             first_choice = resp["choices"][0]
             message = Message.from_llm_chat_message(first_choice["message"])
@@ -614,6 +618,9 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         try:
             resp: ResponsesAPIResponse = _one_attempt()
 
+            # Normalize response for model-specific quirks (via mixin)
+            resp = self.normalize_responses_api_response(resp)
+
             # Parse output -> Message (typed)
             # Cast to a typed sequence
             # accepted by from_llm_responses_output
@@ -691,18 +698,6 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
     # =========================================================================
     def _init_model_info_and_caps(self) -> None:
         # Check if this model doesn't support native tool calling
-        from openhands.sdk.llm.utils.model_features import (
-            NO_NATIVE_TOOL_CALLING_PATTERNS,
-            model_matches,
-        )
-
-        if model_matches(self.model, NO_NATIVE_TOOL_CALLING_PATTERNS):
-            if self.native_tool_calling:
-                logger.info(
-                    f"Model {self.model} does not support native tool calling. "
-                    f"Setting native_tool_calling=False."
-                )
-            self.native_tool_calling = False
 
         # Try to get model info via openrouter or litellm proxy first
         tried = False

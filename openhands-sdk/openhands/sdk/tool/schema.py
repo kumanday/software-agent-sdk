@@ -1,8 +1,7 @@
 import json
-import types
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
-from typing import Any, ClassVar, TypeVar, Union, get_args, get_origin
+from typing import Any, ClassVar, TypeVar, get_args, get_origin
 
 from pydantic import ConfigDict, Field, create_model, model_validator
 from rich.text import Text
@@ -126,42 +125,30 @@ class Schema(DiscriminatedUnionMixin):
         # Get the model's field annotations
         annotations = getattr(cls, "__annotations__", {})
 
-        for field_name, value in list(data.items()):
-            # Skip if value is not a string
-            if not isinstance(value, str):
-                continue
-
-            # Get the expected type for this field
-            if field_name not in annotations:
+        for field_name, value in data.items():
+            # Skip if value is not a string or field not in annotations
+            if not isinstance(value, str) or field_name not in annotations:
                 continue
 
             expected_type = annotations[field_name]
 
-            # Check if the expected type is a list or dict
-            # Handle Union types (e.g., list | None, Optional[list])
-            origin = get_origin(expected_type)
-
-            # Check for Union types (handles both typing.Union and | syntax)
-            is_union = origin is Union
-            # Python 3.10+ has types.UnionType for | syntax
-            if hasattr(types, "UnionType") and origin is types.UnionType:
-                is_union = True
-
-            if is_union:
-                # For Union types, check all args
-                type_args = get_args(expected_type)
+            # Get all possible types (handles unions and simple types uniformly)
+            type_args = get_args(expected_type)
+            if type_args:
+                # Union or generic type - extract origins from all args
                 expected_origins = [get_origin(arg) or arg for arg in type_args]
             else:
+                # Simple type - use origin or the type itself
+                origin = get_origin(expected_type)
                 expected_origins = [origin or expected_type]
 
             # Check if any of the expected types is list or dict
-            expects_list_or_dict = any(exp in (list, dict) for exp in expected_origins)
-
-            if expects_list_or_dict:
+            if any(exp in (list, dict) for exp in expected_origins):
                 # Try to parse the string as JSON
                 try:
                     parsed_value = json.loads(value)
-                    # Only replace if we got a list or dict
+                    # json.loads() returns dict, list, str, int, float, bool, or None
+                    # Only use parsed value if it matches expected collection types
                     if isinstance(parsed_value, (list, dict)):
                         data[field_name] = parsed_value
                 except (json.JSONDecodeError, ValueError):

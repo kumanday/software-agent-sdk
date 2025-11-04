@@ -77,7 +77,8 @@ jobs:
                 4. A PR needs reviewers ONLY if ALL of these are true:
                    - The "requested_reviewers" array is empty (no pending review requests)
                    - The "requested_teams" array is empty (no pending team review requests)
-                   - The reviews array is empty (no reviews have been submitted yet)
+                   - There are NO submitted reviews newer than the latest head commit
+                     (i.e., either no reviews at all, or all existing reviews occurred before the most recent commit)
                 5. IMPORTANT: If ANY of these has entries, SKIP this PR - it already has or had reviewers!
 
                 Example API responses showing a PR that DOES NOT need reviewers (skip this):

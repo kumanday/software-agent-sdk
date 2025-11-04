@@ -285,15 +285,14 @@ class ConversationVisualizer:
         def abbr(n: int | float) -> str:
             n = int(n or 0)
             if n >= 1_000_000_000:
-                s = f"{n / 1_000_000_000:.2f}B"
+                val, suffix = n / 1_000_000_000, "B"
             elif n >= 1_000_000:
-                s = f"{n / 1_000_000:.2f}M"
+                val, suffix = n / 1_000_000, "M"
             elif n >= 1_000:
-                s = f"{n / 1_000:.2f}K"
+                val, suffix = n / 1_000, "K"
             else:
                 return str(n)
-            suffix = s[-1]
-            return s[:-1].rstrip("0").rstrip(".") + suffix
+            return f"{val:.2f}".rstrip("0").rstrip(".") + suffix
 
         input_tokens = abbr(usage.prompt_tokens or 0)
         output_tokens = abbr(usage.completion_tokens or 0)

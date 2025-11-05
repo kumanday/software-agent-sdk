@@ -93,7 +93,7 @@ RESPONSES_API_PATTERNS: list[str] = [
 #       Keep these entries as bare substrings without wildcards.
 FORCE_STRING_SERIALIZER_PATTERNS: list[str] = [
     "deepseek",  # e.g., DeepSeek-V3.2-Exp
-    "glm-4",  # e.g., GLM-4.5 / GLM-4.6
+    "glm",  # e.g., GLM-4.5 / GLM-4.6
     # Kimi K2-Instruct requires string serialization only on Groq
     "groq/kimi-k2-instruct",  # explicit provider-prefixed IDs
 ]

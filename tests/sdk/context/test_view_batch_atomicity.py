@@ -124,7 +124,7 @@ def test_batch_atomicity_partial_batch_forgotten() -> None:
         ),
     ]
 
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     # Batch atomicity should ensure that action4 is also forgotten
     # even though it wasn't explicitly listed in forgotten_event_ids
@@ -174,7 +174,7 @@ def test_batch_atomicity_complete_batch_forgotten() -> None:
         ),
     ]
 
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     # Both actions should be forgotten
     action_ids_in_view = [e.id for e in view.events if isinstance(e, ActionEvent)]
@@ -221,7 +221,7 @@ def test_batch_atomicity_no_forgetting_preserves_batch() -> None:
         ),  # Don't forget anything
     ]
 
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     # All actions should be preserved
     action_ids_in_view = [e.id for e in view.events if isinstance(e, ActionEvent)]
@@ -279,7 +279,7 @@ def test_batch_atomicity_multiple_batches() -> None:
         ),
     ]
 
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     # First batch should be completely forgotten
     action_ids_in_view = [e.id for e in view.events if isinstance(e, ActionEvent)]
@@ -316,7 +316,7 @@ def test_batch_atomicity_single_action_batch() -> None:
         ),
     ]
 
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     # Single action should be forgotten
     action_ids_in_view = [e.id for e in view.events if isinstance(e, ActionEvent)]
@@ -354,7 +354,7 @@ def test_batch_atomicity_no_thinking_blocks() -> None:
         ),
     ]
 
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     # All actions in the batch should be forgotten due to atomicity
     action_ids_in_view = [e.id for e in view.events if isinstance(e, ActionEvent)]

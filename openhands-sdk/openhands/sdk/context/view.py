@@ -181,9 +181,17 @@ class View(BaseModel):
             return True
 
     @staticmethod
-    def from_events(events: Sequence[Event]) -> "View":
+    def from_events(
+        events: Sequence[Event], *, is_security_analyzer_enabled: bool = False
+    ) -> "View":
         """Create a view from a list of events, respecting the semantics of any
         condensation events.
+
+        Args:
+            events: Sequence of events to create the view from
+            is_security_analyzer_enabled: Whether security analyzer is enabled.
+                If True, SecurityPromptEvent instances will be included in the view.
+                If False, they will be excluded from the view.
         """
         forgotten_event_ids: set[EventID] = set()
         condensations: list[Condensation] = []
@@ -201,18 +209,14 @@ class View(BaseModel):
         # blocks separated from their tool calls
         forgotten_event_ids = View._enforce_batch_atomicity(events, forgotten_event_ids)
 
-        # Check if security analyzer is enabled by looking for SecurityPromptEvent
-        security_analyzer_enabled = any(
-            isinstance(event, SecurityPromptEvent) for event in events
-        )
-
         kept_events = [
             event
             for event in events
             if event.id not in forgotten_event_ids
             and isinstance(event, LLMConvertibleEvent)
             and (
-                not isinstance(event, SecurityPromptEvent) or security_analyzer_enabled
+                not isinstance(event, SecurityPromptEvent)
+                or is_security_analyzer_enabled
             )
         ]
 

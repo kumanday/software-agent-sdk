@@ -21,7 +21,7 @@ def test_noop_condenser() -> None:
     ]
 
     condenser = NoOpCondenser()
-    view = View.from_events(events)
+    view = View.from_events(events, is_security_analyzer_enabled=False)
 
     condensation_result = condenser.condense(view)
     assert isinstance(condensation_result, View)

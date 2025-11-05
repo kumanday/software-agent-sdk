@@ -114,8 +114,8 @@ class Agent(AgentBase):
             )
             on_event(event)
 
-            # Add security prompt if security analyzer is enabled
-            if self._add_security_risk_prediction:
+            # Add security prompt if template is available
+            try:
                 security_prompt_text = render_template(
                     prompt_dir=self.prompt_dir,
                     template_name="security_analyzer_info.j2",
@@ -125,6 +125,9 @@ class Agent(AgentBase):
                     security_prompt=TextContent(text=security_prompt_text),
                 )
                 on_event(security_event)
+            except Exception:
+                # Template not found or other error - skip security prompt
+                pass
 
     def _execute_actions(
         self,
@@ -158,7 +161,12 @@ class Agent(AgentBase):
         # of events, exactly as expected, or a new condensation that needs to be
         # processed before the agent can sample another action.
         if self.condenser is not None:
-            view = View.from_events(state.events)
+            is_security_analyzer_enabled = isinstance(
+                self.security_analyzer, LLMSecurityAnalyzer
+            )
+            view = View.from_events(
+                state.events, is_security_analyzer_enabled=is_security_analyzer_enabled
+            )
             condensation_result = self.condenser.condense(view)
 
             match condensation_result:
@@ -170,9 +178,13 @@ class Agent(AgentBase):
                     return None
 
         else:
-            llm_convertible_events = [
-                e for e in state.events if isinstance(e, LLMConvertibleEvent)
-            ]
+            is_security_analyzer_enabled = isinstance(
+                self.security_analyzer, LLMSecurityAnalyzer
+            )
+            view = View.from_events(
+                state.events, is_security_analyzer_enabled=is_security_analyzer_enabled
+            )
+            llm_convertible_events = view.events
 
         # Get LLM Response (Action)
         _messages = LLMConvertibleEvent.events_to_messages(llm_convertible_events)

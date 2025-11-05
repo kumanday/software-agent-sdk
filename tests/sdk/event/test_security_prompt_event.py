@@ -1,6 +1,7 @@
 """Tests for SecurityPromptEvent."""
 
-from openhands.sdk.event import SecurityPromptEvent
+from openhands.sdk.context.view import View
+from openhands.sdk.event import SecurityPromptEvent, SystemPromptEvent
 from openhands.sdk.llm import TextContent
 
 
@@ -56,3 +57,28 @@ def test_security_prompt_event_str():
 
     assert "SecurityPromptEvent (agent)" in str_repr
     assert "Security: Security prompt content." in str_repr
+
+
+def test_view_from_events_security_analyzer_enabled():
+    """Test View.from_events includes SecurityPromptEvent when security analyzer is enabled."""  # noqa: E501
+    system_event = SystemPromptEvent(
+        source="agent",
+        system_prompt=TextContent(text="System prompt"),
+        tools=[],
+    )
+    security_event = SecurityPromptEvent(
+        source="agent",
+        security_prompt=TextContent(text="Security prompt"),
+    )
+    events = [system_event, security_event]
+
+    # When security analyzer is enabled, SecurityPromptEvent should be included
+    view_enabled = View.from_events(events, is_security_analyzer_enabled=True)
+    assert len(view_enabled.events) == 2
+    assert any(isinstance(e, SecurityPromptEvent) for e in view_enabled.events)
+
+    # When security analyzer is disabled, SecurityPromptEvent should be excluded
+    view_disabled = View.from_events(events, is_security_analyzer_enabled=False)
+    assert len(view_disabled.events) == 1
+    assert not any(isinstance(e, SecurityPromptEvent) for e in view_disabled.events)
+    assert any(isinstance(e, SystemPromptEvent) for e in view_disabled.events)

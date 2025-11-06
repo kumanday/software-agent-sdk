@@ -85,6 +85,7 @@ class FileEditorObservation(Observation):
     new_content: str | None = Field(
         default=None, description="The content of the file after the edit."
     )
+
     _diff_cache: Text | None = PrivateAttr(default=None)
 
     @property

@@ -352,10 +352,17 @@ class FileEditor:
                     mime_type = "image/webp"
                 elif image_base64.startswith("Qk"):
                     mime_type = "image/bmp"
-                output_msg = f"Image file {path} read successfully. Displaying image content."
+                output_msg = (
+                    f"Image file {path} read successfully. "
+                    "Displaying image content."
+                )
+                image_url = f"data:{mime_type};base64,{image_base64}"
                 return FileEditorObservation(
                     command="view",
-                    content=[TextContent(text=output_msg), ImageContent(image_urls=[f"data:{mime_type};base64,{image_base64}"])],
+                    content=[
+                        TextContent(text=output_msg),
+                        ImageContent(image_urls=[image_url]),
+                    ],
                     path=str(path),
                     prev_exist=True,
                 )

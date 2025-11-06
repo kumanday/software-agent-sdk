@@ -3,8 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from openhands.agent_server.dependencies import get_desktop_service
-from openhands.agent_server.desktop_service import DesktopService
+from openhands.agent_server.desktop_service import DesktopService, get_desktop_service
 from openhands.sdk.logger import get_logger
 
 

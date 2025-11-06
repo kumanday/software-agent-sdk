@@ -9,7 +9,11 @@ from starlette.requests import Request
 
 from openhands.agent_server.bash_router import bash_router
 from openhands.agent_server.bash_service import BashEventService
-from openhands.agent_server.config import Config, get_default_config
+from openhands.agent_server.config import (
+    ENVIRONMENT_VARIABLE_PREFIX,
+    Config,
+    get_default_config,
+)
 from openhands.agent_server.conversation_router import conversation_router
 from openhands.agent_server.conversation_service import ConversationService
 from openhands.agent_server.dependencies import (
@@ -17,8 +21,10 @@ from openhands.agent_server.dependencies import (
 )
 from openhands.agent_server.desktop_router import desktop_router
 from openhands.agent_server.desktop_service import get_desktop_service
+from openhands.agent_server.env_parser import from_env as parse_env
 from openhands.agent_server.event_router import event_router
 from openhands.agent_server.file_router import file_router
+from openhands.agent_server.git_router import git_router
 from openhands.agent_server.middleware import LocalhostCORSMiddleware
 from openhands.agent_server.server_details_router import (
     get_server_info,
@@ -145,6 +151,7 @@ def _add_api_routes(app: FastAPI, config: Config) -> None:
     api_router.include_router(conversation_router)
     api_router.include_router(tool_router)
     api_router.include_router(bash_router)
+    api_router.include_router(git_router)
     api_router.include_router(file_router)
     api_router.include_router(vscode_router)
     api_router.include_router(desktop_router)
@@ -177,7 +184,7 @@ def _setup_static_files(app: FastAPI, config: Config) -> None:
     )
 
     # Add root redirect to static files
-    @app.get("/")
+    @app.get("/", tags=["Server Details"])
     async def root_redirect():
         """Redirect root endpoint to static files directory."""
         # Check if index.html exists in the static directory
@@ -307,8 +314,14 @@ def create_app(config: Config | None = None) -> FastAPI:
 
 
 def build_app() -> FastAPI:
-    """Convenience factory for uvicorn --factory usage."""
-    return create_app()
+    """Convenience factory for uvicorn --factory usage.
+
+    Reads configuration from environment at creation time (uvicorn --factory) so
+    that tests like wsproto can set OH_SESSION_API_KEYS dynamically.
+    """
+    # Parse Config fresh from env to capture any test-set env like OH_SESSION_API_KEYS
+    cfg = parse_env(Config, ENVIRONMENT_VARIABLE_PREFIX)
+    return create_app(cfg)
 
 
 # Create the default app instance

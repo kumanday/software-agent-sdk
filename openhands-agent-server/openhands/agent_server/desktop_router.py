@@ -3,8 +3,13 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from openhands.agent_server.dependencies import get_desktop_service
-from openhands.agent_server.desktop_service import DesktopService
+from openhands.agent_server.dependencies import (
+    get_desktop_service as get_desktop_service_di,
+)
+from openhands.agent_server.desktop_service import (
+    DesktopService,
+    get_desktop_service as _legacy_get_desktop_service,
+)
 from openhands.sdk.logger import get_logger
 
 
@@ -22,7 +27,7 @@ class DesktopUrlResponse(BaseModel):
 @desktop_router.get("/url", response_model=DesktopUrlResponse)
 async def get_desktop_url(
     base_url: str = "http://localhost:8002",
-    desktop_service: DesktopService | None = Depends(get_desktop_service),
+    desktop_service: DesktopService | None = Depends(get_desktop_service_di),
 ) -> DesktopUrlResponse:
     """Get the noVNC URL for desktop access.
 
@@ -37,11 +42,8 @@ async def get_desktop_url(
     """
     if desktop_service is None or not hasattr(desktop_service, "get_vnc_url"):
         # Fallback for direct function invocation in tests
-        from openhands.agent_server.desktop_service import (
-            get_desktop_service as _legacy_get,
-        )
-
-        desktop_service = _legacy_get()
+        # Uses legacy accessor so tests can patch this module's symbol
+        desktop_service = _legacy_get_desktop_service()
         if desktop_service is None:
             raise HTTPException(
                 status_code=503,

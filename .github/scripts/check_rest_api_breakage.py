@@ -75,16 +75,22 @@ def generate_openapi_current(repo_root: Path, out_path: Path) -> None:
 
 
 def generate_openapi_from_installed(version: str, out_path: Path) -> None:
-    # Create a temporary virtualenv to avoid polluting runner env
+    # Create a temporary virtualenv to avoid polluting runner env, using uv
     venv_dir = Path(tempfile.mkdtemp(prefix="old_agent_server_venv_"))
-    py = sys.executable
-    subprocess.run([py, "-m", "venv", str(venv_dir)], check=True)
+    subprocess.run(["uv", "venv", str(venv_dir)], check=True)
     bin_dir = "Scripts" if os.name == "nt" else "bin"
     pybin = venv_dir / bin_dir / ("python.exe" if os.name == "nt" else "python")
 
-    subprocess.run([str(pybin), "-m", "pip", "install", "-U", "pip"], check=True)
+    # Install the specific previous agent-server using uv
     subprocess.run(
-        [str(pybin), "-m", "pip", "install", f"openhands-agent-server=={version}"],
+        [
+            "uv",
+            "pip",
+            "install",
+            "-p",
+            str(pybin),
+            f"openhands-agent-server=={version}",
+        ],
         check=True,
     )
 

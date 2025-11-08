@@ -291,9 +291,9 @@ class ConversationService:
                     f"{conversation_id}: {e}"
                 )
 
-            # Safely remove conversation directory and workspace
-            # These operations may fail due to permission issues, but we don't want
-            # that to prevent the conversation from being marked as deleted
+            # Safely remove only the conversation directory (workspace is preserved).
+            # This operation may fail due to permission issues, but we don't want that
+            # to prevent the conversation from being marked as deleted.
             _safe_rmtree(
                 event_service.conversation_dir,
                 f"conversation directory for {conversation_id}",

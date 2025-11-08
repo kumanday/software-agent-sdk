@@ -1,4 +1,5 @@
 import base64
+import mimetypes
 import os
 import re
 import shutil
@@ -341,17 +342,9 @@ class FileEditor:
                     image_bytes = f.read()
                 image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-                mime_type = "image/png"  # default
-                if image_base64.startswith("/9j/"):
-                    mime_type = "image/jpeg"
-                elif image_base64.startswith("iVBORw0KGgo"):
-                    mime_type = "image/png"
-                elif image_base64.startswith("R0lGODlh"):
-                    mime_type = "image/gif"
-                elif image_base64.startswith("UklGR"):
-                    mime_type = "image/webp"
-                elif image_base64.startswith("Qk"):
-                    mime_type = "image/bmp"
+                mime_type, _ = mimetypes.guess_type(str(path))
+                if not mime_type or not mime_type.startswith('image/'):
+                    mime_type = 'image/png'
                 output_msg = (
                     f"Image file {path} read successfully. Displaying image content."
                 )

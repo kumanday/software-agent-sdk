@@ -30,8 +30,6 @@ from typing import Any
 from pydantic import SecretStr
 
 from openhands.sdk import LLM, Agent, Conversation
-from openhands.sdk.tool import Tool
-from openhands.tools.terminal import TerminalTool
 
 
 def ensure_dir(p: str) -> None:
@@ -107,7 +105,7 @@ def main() -> None:
         usage_id="agent",
     )
 
-    agent = Agent(llm=llm, tools=[Tool(name=TerminalTool.name)])
+    agent = Agent(llm=llm)
 
     # Use .conversations as base; conversation id folder appended automatically
     persistence_base = ".conversations"
@@ -122,10 +120,10 @@ def main() -> None:
         persistence_dir=persistence_base,
     )
 
-    # Generate both a tool-call turn and a pure text turn
-    conversation.send_message("Please echo 'HELLO' then say Done.")
+    # Generate only text turns (no tool calls) to force MessageEvent
+    conversation.send_message("Reply with only OK (no tools)")
     conversation.run()
-    conversation.send_message("Reply with only OK")
+    conversation.send_message("Now reply with: This is a second text-only message.")
     conversation.run()
 
     # Locate events dir
@@ -207,74 +205,77 @@ def main() -> None:
             return out_text.strip()
         return ""
 
-    # Helpers to extract event-side content
+    # Helpers to extract MessageEvent-side content and reasoning
     def message_event_text(ev: dict[str, Any]) -> str:
         lm = ev.get("llm_message", {})
         return content_text_from_event_llm_message_content(lm.get("content")).strip()
 
-    def action_event_text(ev: dict[str, Any]) -> str:
-        # ActionEvent stores assistant "content" as 'thought' (list of TextContent)
-        thought = ev.get("thought") or []
-        if isinstance(thought, list):
-            texts: list[str] = []
-            for item in thought:
-                if isinstance(item, dict):
-                    t = item.get("text")
-                    if isinstance(t, str):
-                        texts.append(t)
-            return "\n".join(texts).strip()
+    def message_event_reasoning(ev: dict[str, Any]) -> str:
+        lm = ev.get("llm_message", {})
+        rc = lm.get("reasoning_content")
+        if isinstance(rc, str):
+            return rc.strip()
         return ""
 
-    lines.append("## Cases with empty content in telemetry or events\n")
+    # Telemetry-side reasoning (chat-completions shape)
+    def telemetry_reasoning_text(rec: dict[str, Any]) -> str:
+        resp = rec["data"].get("response", {})
+        choices = resp.get("choices") or []
+        if choices:
+            msg = (choices[0] or {}).get("message", {})
+            rc = msg.get("reasoning_content")
+            if isinstance(rc, str):
+                return rc.strip()
+        return ""
 
-    # Iterate telemetry entries and compare with events by response id
+    lines.append(
+        "## MessageEvent-focused cases (empty content and/or reasoning present)\n"
+    )
+
+    # Compare telemetry entries with events by response id (MessageEvents only)
     for rid, tele in telemetry_by_id.items():
+        ev_bucket = events_by_id.get(rid, {"message": [], "action": []})
+        if not ev_bucket.get("message"):
+            continue  # focus only on responses that resulted in MessageEvent
+
         tele_txt = telemetry_content_text(tele)
         tele_empty = len(tele_txt) == 0
+        tele_reason = telemetry_reasoning_text(tele)
 
-        ev_bucket = events_by_id.get(rid, {"message": [], "action": []})
-        msg_texts = [
-            message_event_text(e["data"]) for e in ev_bucket.get("message", [])
-        ]
-        act_texts = [action_event_text(e["data"]) for e in ev_bucket.get("action", [])]
+        # Consider the first MessageEvent for this response id
+        msg_event = ev_bucket["message"][0]
+        etxt = message_event_text(msg_event["data"]) or ""
+        e_reason = message_event_reasoning(msg_event["data"]) or ""
+        evt_empty = len(etxt) == 0
 
-        # Event-side emptiness: True if relevant events exist and all are empty
-        has_ev = bool(ev_bucket.get("message") or ev_bucket.get("action"))
-        ev_empty = has_ev and all(len(t) == 0 for t in (msg_texts + act_texts))
-
-        if not (tele_empty or ev_empty):
+        # Report only when we see the phenomenon of interest
+        if not ((tele_empty and tele_reason) or (evt_empty and e_reason)):
             continue
 
         lines.append(f"### Response `{rid}`\n")
         # Telemetry block
         lines.append(f"- Telemetry file: `{tele['path']}`\n")
         lines.append(f"- Telemetry content empty: **{tele_empty}**\n")
+        lines.append(f"- Telemetry reasoning present: **{bool(tele_reason)}**\n")
+        if tele_reason:
+            preview = tele_reason[:200].replace("\n", " ")
+            lines.append(f"  - Reasoning preview: {preview}...\n")
         lines.append("- Telemetry response JSON:\n")
         lines.append("```json")
         lines.append(dump_json(tele["data"].get("response", {})))
         lines.append("```")
 
-        # Event blocks
-        if has_ev:
-            for e in ev_bucket.get("message", []):
-                etxt = message_event_text(e["data"]) or ""
-                lines.append(f"- Event (MessageEvent) file: `{e['path']}`\n")
-                lines.append(f"  - Event content empty: **{len(etxt) == 0}**\n")
-                lines.append("  - Event JSON:\n")
-                lines.append("```json")
-                lines.append(dump_json(e["data"]))
-                lines.append("```")
-            for e in ev_bucket.get("action", []):
-                atxt = action_event_text(e["data"]) or ""
-                lines.append(f"- Event (ActionEvent) file: `{e['path']}`\n")
-                lines.append(f"  - Event thought empty: **{len(atxt) == 0}**\n")
-                lines.append("  - Event JSON:\n")
-                lines.append("```json")
-                lines.append(dump_json(e["data"]))
-                lines.append("```")
-        else:
-            lines.append("- Event: none\n")
-
+        # Event block (MessageEvent)
+        lines.append(f"- Event (MessageEvent) file: `{msg_event['path']}`\n")
+        lines.append(f"  - Event content empty: **{evt_empty}**\n")
+        lines.append(f"  - Event reasoning present: **{bool(e_reason)}**\n")
+        if e_reason:
+            eprev = e_reason[:200].replace("\n", " ")
+            lines.append(f"    - Reasoning preview: {eprev}...\n")
+        lines.append("  - Event JSON:\n")
+        lines.append("```json")
+        lines.append(dump_json(msg_event["data"]))
+        lines.append("```")
         lines.append("")
 
     with out_path.open("w", encoding="utf-8") as f:

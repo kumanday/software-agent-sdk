@@ -19,11 +19,10 @@ from openhands.sdk import (
     TextContent,
     get_logger,
 )
-from openhands.sdk.tool.registry import register_tool
 from openhands.sdk.tool.spec import Tool
-from openhands.tools.execute_bash import BashTool
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.task_tracker import TaskTrackerTool
+from openhands.tools.terminal import TerminalTool
 
 
 logger = get_logger(__name__)
@@ -43,18 +42,14 @@ assert llm.vision_is_active(), "The selected LLM model does not support vision i
 
 cwd = os.getcwd()
 
-register_tool("BashTool", BashTool)
-register_tool("FileEditorTool", FileEditorTool)
-register_tool("TaskTrackerTool", TaskTrackerTool)
-
 agent = Agent(
     llm=llm,
     tools=[
         Tool(
-            name="BashTool",
+            name=TerminalTool.name,
         ),
-        Tool(name="FileEditorTool"),
-        Tool(name="TaskTrackerTool"),
+        Tool(name=FileEditorTool.name),
+        Tool(name=TaskTrackerTool.name),
     ],
 )
 
@@ -93,8 +88,11 @@ conversation.send_message(
 )
 conversation.run()
 
-
 print("=" * 100)
 print("Conversation finished. Got the following LLM messages:")
 for i, message in enumerate(llm_messages):
     print(f"Message {i}: {str(message)[:200]}")
+
+# Report cost
+cost = llm.metrics.accumulated_cost
+print(f"EXAMPLE_COST: {cost}")

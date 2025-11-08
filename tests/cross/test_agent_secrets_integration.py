@@ -12,9 +12,9 @@ from openhands.sdk.conversation.impl.local_conversation import LocalConversation
 from openhands.sdk.conversation.secret_source import LookupSecret, SecretSource
 from openhands.sdk.llm import LLM
 from openhands.sdk.tool import Tool, register_tool
-from openhands.tools.execute_bash import BashTool
-from openhands.tools.execute_bash.definition import ExecuteBashAction
-from openhands.tools.execute_bash.impl import BashExecutor
+from openhands.tools.terminal import TerminalTool
+from openhands.tools.terminal.definition import ExecuteBashAction
+from openhands.tools.terminal.impl import BashExecutor
 
 
 # -----------------------
@@ -29,8 +29,8 @@ def llm() -> LLM:
 
 @pytest.fixture
 def tools() -> list[Tool]:
-    register_tool("BashTool", BashTool)
-    return [Tool(name="BashTool")]
+    register_tool("TerminalTool", TerminalTool)
+    return [Tool(name="TerminalTool")]
 
 
 @pytest.fixture
@@ -46,7 +46,7 @@ def conversation(agent: Agent, tmp_path) -> LocalConversation:
 @pytest.fixture
 def bash_executor(conversation: LocalConversation) -> BashExecutor:
     tools_map = conversation.agent.tools_map
-    bash_tool = tools_map["execute_bash"]
+    bash_tool = tools_map["terminal"]
     return cast(BashExecutor, bash_tool.executor)
 
 
@@ -73,17 +73,17 @@ def test_agent_configures_bash_tools_env_provider(
     )
 
     # Get the bash tool from agent
-    bash_tool = agent.tools_map["execute_bash"]
+    bash_tool = agent.tools_map["terminal"]
 
     assert bash_tool is not None
     assert bash_tool.executor is not None
 
     # Test that secrets are accessible via conversation
-    secrets_manager = conversation.state.secrets_manager
-    env_vars = secrets_manager.get_secrets_as_env_vars("echo $API_KEY")
+    secret_registry = conversation.state.secret_registry
+    env_vars = secret_registry.get_secrets_as_env_vars("echo $API_KEY")
     assert env_vars == {"API_KEY": "test-api-key"}
 
-    env_vars = secrets_manager.get_secrets_as_env_vars("echo $NOT_A_KEY")
+    env_vars = secret_registry.get_secrets_as_env_vars("echo $NOT_A_KEY")
     assert env_vars == {}
 
 
@@ -104,8 +104,8 @@ def test_agent_env_provider_with_callable_secrets(
         }
     )
 
-    secrets_manager = conversation.state.secrets_manager
-    env_vars = secrets_manager.get_secrets_as_env_vars(
+    secret_registry = conversation.state.secret_registry
+    env_vars = secret_registry.get_secrets_as_env_vars(
         "export DYNAMIC_TOKEN=$DYNAMIC_TOKEN"
     )
     assert env_vars == {"DYNAMIC_TOKEN": "dynamic-token-123"}
@@ -128,16 +128,16 @@ def test_agent_env_provider_handles_exceptions(
         }
     )
 
-    secrets_manager = conversation.state.secrets_manager
+    secret_registry = conversation.state.secret_registry
 
     # Should not raise exception, should return empty dict
-    env_vars = secrets_manager.get_secrets_as_env_vars(
+    env_vars = secret_registry.get_secrets_as_env_vars(
         "export FAILING_KEY=$FAILING_KEY"
     )
     assert env_vars == {}
 
     # Working key should still work
-    env_vars = secrets_manager.get_secrets_as_env_vars(
+    env_vars = secret_registry.get_secrets_as_env_vars(
         "export WORKING_KEY=$WORKING_KEY"
     )
     assert env_vars == {"WORKING_KEY": "working-value"}
@@ -151,8 +151,8 @@ def test_agent_env_provider_no_matches(
     conversation.update_secrets({"API_KEY": "test-value"})
 
     # Test secrets manager with command that doesn't reference secrets
-    secrets_manager = conversation.state.secrets_manager
-    env_vars = secrets_manager.get_secrets_as_env_vars("echo hello world")
+    secret_registry = conversation.state.secret_registry
+    env_vars = secret_registry.get_secrets_as_env_vars("echo hello world")
 
     assert env_vars == {}
 
@@ -186,31 +186,31 @@ def test_agent_secrets_integration_workflow(
             }
         )
 
-        secrets_manager = conversation.state.secrets_manager
+        secret_registry = conversation.state.secret_registry
 
         # Single secret
-        env_vars = secrets_manager.get_secrets_as_env_vars(
+        env_vars = secret_registry.get_secrets_as_env_vars(
             "curl -H 'X-API-Key: $API_KEY'"
         )
         assert env_vars == {"API_KEY": "static-api-key-123"}
 
         # Multiple secrets
         command = "export API_KEY=$API_KEY && export AUTH_TOKEN=$AUTH_TOKEN"
-        env_vars = secrets_manager.get_secrets_as_env_vars(command)
+        env_vars = secret_registry.get_secrets_as_env_vars(command)
         assert env_vars == {
             "API_KEY": "static-api-key-123",
             "AUTH_TOKEN": "bearer-token-456",
         }
 
         # No secrets referenced
-        env_vars = secrets_manager.get_secrets_as_env_vars("echo hello world")
+        env_vars = secret_registry.get_secrets_as_env_vars("echo hello world")
         assert env_vars == {}
 
     # Step 5: Update secrets and verify changes propagate
     conversation.update_secrets({"API_KEY": "updated-api-key-789"})
 
-    secrets_manager = conversation.state.secrets_manager
-    env_vars = secrets_manager.get_secrets_as_env_vars("curl -H 'X-API-Key: $API_KEY'")
+    secret_registry = conversation.state.secret_registry
+    env_vars = secret_registry.get_secrets_as_env_vars("curl -H 'X-API-Key: $API_KEY'")
     assert env_vars == {"API_KEY": "updated-api-key-789"}
 
 
@@ -234,13 +234,13 @@ def test_mask_secrets(
     try:
         action = ExecuteBashAction(command="echo $API_KEY")
         result = bash_executor(action, conversation=conversation)
-        assert "test-api-key" not in result.output
-        assert "<secret-hidden>" in result.output
+        assert "test-api-key" not in result.text
+        assert "<secret-hidden>" in result.text
 
         action = ExecuteBashAction(command="echo $DB_PASSWORD")
         result = bash_executor(action, conversation=conversation)
-        assert "dynamic-secret" not in result.output
-        assert "<secret-hidden>" in result.output
+        assert "dynamic-secret" not in result.text
+        assert "<secret-hidden>" in result.text
 
     finally:
         bash_executor.close()
@@ -265,13 +265,13 @@ def test_mask_changing_secrets(
     try:
         action = ExecuteBashAction(command="echo $DB_PASSWORD")
         result = bash_executor(action, conversation=conversation)
-        assert "changing-secret" not in result.output
-        assert "<secret-hidden>" in result.output
+        assert "changing-secret" not in result.text
+        assert "<secret-hidden>" in result.text
 
         action = ExecuteBashAction(command="echo $DB_PASSWORD")
         result = bash_executor(action, conversation=conversation)
-        assert "changing-secret" not in result.output
-        assert "<secret-hidden>" in result.output
+        assert "changing-secret" not in result.text
+        assert "<secret-hidden>" in result.text
 
     finally:
         bash_executor.close()
@@ -303,13 +303,13 @@ def test_masking_persists(
         action = ExecuteBashAction(command="echo $DB_PASSWORD")
         result = bash_executor(action, conversation=conversation)
         print(result)
-        assert "changing-secret" not in result.output
-        assert "<secret-hidden>" in result.output
+        assert "changing-secret" not in result.text
+        assert "<secret-hidden>" in result.text
 
         action = ExecuteBashAction(command="echo $DB_PASSWORD")
         result = bash_executor(action, conversation=conversation)
-        assert "changing-secret" not in result.output
-        assert "<secret-hidden>" in result.output
+        assert "changing-secret" not in result.text
+        assert "<secret-hidden>" in result.text
         assert dynamic_secret.raised_on_second
 
     finally:

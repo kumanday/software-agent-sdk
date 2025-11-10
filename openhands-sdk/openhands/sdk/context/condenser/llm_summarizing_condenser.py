@@ -9,6 +9,7 @@ from openhands.sdk.event.base import LLMConvertibleEvent
 from openhands.sdk.event.condenser import Condensation
 from openhands.sdk.event.llm_convertible import MessageEvent
 from openhands.sdk.llm import LLM, Message, TextContent
+from openhands.sdk.observability.laminar import observe
 
 
 class LLMSummarizingCondenser(RollingCondenser):
@@ -55,6 +56,7 @@ class LLMSummarizingCondenser(RollingCondenser):
 
         return len(view) > self.max_size
 
+    @observe(ignore_inputs=["view"])
     def get_condensation(self, view: View) -> Condensation:
         head = view[: self.keep_first]
 
@@ -127,7 +129,7 @@ class LLMSummarizingCondenser(RollingCondenser):
 
         llm_response = self.llm.completion(
             messages=messages,
-            extra_body={"metadata": self.llm.metadata},
+            extra_body=self.llm.litellm_extra_body,
         )
         # Extract summary from the LLMResponse message
         summary = None
@@ -140,4 +142,5 @@ class LLMSummarizingCondenser(RollingCondenser):
             forgotten_event_ids=[event.id for event in forgotten_events],
             summary=summary,
             summary_offset=self.keep_first,
+            llm_response_id=llm_response.id,
         )

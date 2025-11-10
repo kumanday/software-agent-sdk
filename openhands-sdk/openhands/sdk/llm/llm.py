@@ -521,21 +521,7 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
             self._telemetry.on_request(log_ctx=log_ctx)
             # Merge retry-modified kwargs (like temperature) with call_kwargs
             final_kwargs = {**call_kwargs, **retry_kwargs}
-            try:
-                resp = self._transport_call(messages=formatted_messages, **final_kwargs)
-            except InternalServerError as e:
-                # litellm sometimes raises InternalServerError when it receives
-                # a malformed response from the provider (e.g., choices=None).
-                # This happens in convert_to_model_response_object when
-                # validating response_object["choices"]. We convert this specific
-                # error to LLMNoResponseError so that temperature bumping is
-                # triggered on retry, which can help avoid the same provider bug.
-                error_msg = str(e).lower()
-                if "convert_to_model_response_object" in error_msg:
-                    raise LLMNoResponseError(
-                        f"Provider returned malformed response: {e}"
-                    ) from e
-                raise
+            resp = self._transport_call(messages=formatted_messages, **final_kwargs)
 
             raw_resp: ModelResponse | None = None
             if use_mock_tools:

@@ -8,7 +8,7 @@ from openhands.sdk.event.llm_convertible import MessageEvent
 from openhands.sdk.tool import Tool, register_tool
 from openhands.tools.file_editor import FileEditorTool
 from openhands.tools.terminal import TerminalTool
-from tests.integration.base import BaseIntegrationTest, TestResult
+from tests.integration.base import BaseIntegrationTest, SkipTest, TestResult
 
 
 INSTRUCTION = (
@@ -33,7 +33,7 @@ class ImageFileViewingTest(BaseIntegrationTest):
 
         # Verify that the LLM supports vision
         if not self.llm.vision_is_active():
-            raise ValueError(
+            raise SkipTest(
                 "This test requires a vision-capable LLM model. "
                 "Please use a model that supports image input."
             )

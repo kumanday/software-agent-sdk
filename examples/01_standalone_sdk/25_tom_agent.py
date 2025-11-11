@@ -10,7 +10,7 @@ from pydantic import SecretStr
 
 from openhands.sdk import LLM, Agent, Conversation
 from openhands.tools.preset import get_tom_agent
-
+from openhands.tools.tom_consult.action import SleeptimeComputeAction
 
 # Configure LLM
 api_key: str | None = os.getenv("LLM_API_KEY")
@@ -39,6 +39,11 @@ CONVERSATIONS_DIR = os.path.join(PERSISTENCE_DIR, "conversations")
 conversation = Conversation(
     agent=agent, workspace=cwd, persistence_dir=CONVERSATIONS_DIR
 )
+
+# Sleep time compute
+sleeptime_compute_tool = conversation.agent.tools_map["sleeptime_compute"]
+assert sleeptime_compute_tool is not None
+sleeptime_result = sleeptime_compute_tool.executor(SleeptimeComputeAction())
 
 # Send a potentially vague message where Tom consultation might help
 conversation.send_message(

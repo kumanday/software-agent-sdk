@@ -1171,10 +1171,10 @@ def test_generate_conversation_title_invalid_params(
         client.app.dependency_overrides.clear()
 
 
-def test_start_conversation_with_registered_tools(
+def test_start_conversation_with_tool_module_qualnames(
     client, mock_conversation_service, sample_conversation_info
 ):
-    """Test start_conversation endpoint with registered_tools field."""
+    """Test start_conversation endpoint with tool_module_qualnames field."""
 
     # Mock the service response
     mock_conversation_service.start_conversation.return_value = (
@@ -1202,7 +1202,13 @@ def test_start_conversation_with_registered_tools(
                 ],
             },
             "workspace": {"working_dir": "/tmp/test"},
-            "registered_tools": ["glob", "grep", "planning_file_editor"],
+            "tool_module_qualnames": {
+                "glob": "openhands.tools.glob.definition",
+                "grep": "openhands.tools.grep.definition",
+                "planning_file_editor": (
+                    "openhands.tools.planning_file_editor.definition"
+                ),
+            },
         }
 
         response = client.post("/api/conversations", json=request_data)
@@ -1215,20 +1221,20 @@ def test_start_conversation_with_registered_tools(
         mock_conversation_service.start_conversation.assert_called_once()
         call_args = mock_conversation_service.start_conversation.call_args
         request_arg = call_args[0][0]
-        assert hasattr(request_arg, "registered_tools")
-        assert request_arg.registered_tools == [
-            "glob",
-            "grep",
-            "planning_file_editor",
-        ]
+        assert hasattr(request_arg, "tool_module_qualnames")
+        assert request_arg.tool_module_qualnames == {
+            "glob": "openhands.tools.glob.definition",
+            "grep": "openhands.tools.grep.definition",
+            "planning_file_editor": ("openhands.tools.planning_file_editor.definition"),
+        }
     finally:
         client.app.dependency_overrides.clear()
 
 
-def test_start_conversation_without_registered_tools(
+def test_start_conversation_without_tool_module_qualnames(
     client, mock_conversation_service, sample_conversation_info
 ):
-    """Test start_conversation endpoint without registered_tools field."""
+    """Test start_conversation endpoint without tool_module_qualnames field."""
 
     # Mock the service response
     mock_conversation_service.start_conversation.return_value = (
@@ -1264,8 +1270,8 @@ def test_start_conversation_without_registered_tools(
         mock_conversation_service.start_conversation.assert_called_once()
         call_args = mock_conversation_service.start_conversation.call_args
         request_arg = call_args[0][0]
-        assert hasattr(request_arg, "registered_tools")
-        # Should default to empty list
-        assert request_arg.registered_tools == []
+        assert hasattr(request_arg, "tool_module_qualnames")
+        # Should default to empty dict
+        assert request_arg.tool_module_qualnames == {}
     finally:
         client.app.dependency_overrides.clear()

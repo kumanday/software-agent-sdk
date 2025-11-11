@@ -97,11 +97,12 @@ class StartConversationRequest(BaseModel):
         default_factory=dict,
         description="Secrets available in the conversation",
     )
-    registered_tools: list[str] = Field(
-        default_factory=list,
+    tool_module_qualnames: dict[str, str] = Field(
+        default_factory=dict,
         description=(
-            "List of tool names registered on the client that should be "
-            "dynamically registered on the server for this conversation."
+            "Mapping of tool names to their module qualnames from the client's "
+            "registry. These modules will be dynamically imported on the server "
+            "to register the tools for this conversation."
         ),
     )
 

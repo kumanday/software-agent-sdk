@@ -1,7 +1,9 @@
 """Example demonstrating Tom agent with Theory of Mind capabilities.
 
-This example shows how to use the Tom agent preset which includes
-a TomConsultTool for getting personalized guidance based on user modeling.
+This example shows how to set up an agent with Tom tools for getting
+personalized guidance based on user modeling. Tom tools include:
+- TomConsultTool: Get guidance for vague or unclear tasks
+- SleeptimeComputeTool: Index conversations for user modeling
 """
 
 import os
@@ -9,8 +11,11 @@ import os
 from pydantic import SecretStr
 
 from openhands.sdk import LLM, Agent, Conversation
-from openhands.tools.preset import get_tom_agent
+from openhands.sdk.tool import Tool, register_tool
+from openhands.tools.preset.default import get_default_tools, register_default_tools
+from openhands.tools.tom_consult import SleeptimeComputeTool, TomConsultTool
 from openhands.tools.tom_consult.action import SleeptimeComputeAction
+
 
 # Configure LLM
 api_key: str | None = os.getenv("LLM_API_KEY")
@@ -23,14 +28,37 @@ llm: LLM = LLM(
     drop_params=True,
 )
 
-# Create Tom agent with Theory of Mind capabilities
+# Register tools (default tools + Tom tools)
+register_default_tools(enable_browser=False)  # CLI mode, no browser
+register_tool("TomConsultTool", TomConsultTool)
+register_tool("SleeptimeComputeTool", SleeptimeComputeTool)
+
+# Build tools list with Tom tools
+tools = get_default_tools(enable_browser=False)
+
+# Configure Tom tools with parameters
+tom_params: dict[str, bool | str] = {
+    "enable_rag": True,  # Enable RAG in Tom agent
+}
+
+# Add LLM configuration for Tom tools (uses same LLM as main agent)
+tom_params["llm_model"] = llm.model
+if llm.api_key:
+    if isinstance(llm.api_key, SecretStr):
+        tom_params["api_key"] = llm.api_key.get_secret_value()
+    else:
+        tom_params["api_key"] = llm.api_key
+if llm.base_url:
+    tom_params["api_base"] = llm.base_url
+
+# Add both Tom tools to the agent
+tools.append(Tool(name="TomConsultTool", params=tom_params))
+tools.append(Tool(name="SleeptimeComputeTool", params=tom_params))
+
+# Create agent with Tom capabilities
 # This agent can consult Tom for personalized guidance
-# Note: Tom's user modeling data will be stored in workspace/.openhands/
-agent: Agent = get_tom_agent(
-    llm=llm,
-    cli_mode=True,  # Disable browser tools for CLI
-    enable_rag=True,  # Enable RAG in Tom agent
-)
+# Note: Tom's user modeling data will be stored in ~/.openhands/
+agent: Agent = Agent(llm=llm, tools=tools)
 
 # Start conversation
 cwd: str = os.getcwd()
@@ -40,15 +68,16 @@ conversation = Conversation(
     agent=agent, workspace=cwd, persistence_dir=CONVERSATIONS_DIR
 )
 
-# Sleep time compute
-sleeptime_compute_tool = conversation.agent.tools_map["sleeptime_compute"]
-assert sleeptime_compute_tool is not None
-sleeptime_result = sleeptime_compute_tool.executor(SleeptimeComputeAction())
-
-
-# Display the result of sleeptime_compute
-print("\nSleeptime Compute Result:")
-print(sleeptime_compute_tool.executor.list_user_models())
+# Optionally run sleeptime compute to index existing conversations
+# This builds user preferences and patterns from conversation history
+sleeptime_compute_tool = conversation.agent.tools_map.get("sleeptime_compute")
+if sleeptime_compute_tool and sleeptime_compute_tool.executor:
+    print("\nRunning sleeptime compute to index conversations...")
+    sleeptime_result = sleeptime_compute_tool.executor(
+        SleeptimeComputeAction(), conversation
+    )
+    print(f"Result: {sleeptime_result.message}")
+    print(f"Sessions processed: {sleeptime_result.sessions_processed}")
 
 # Send a potentially vague message where Tom consultation might help
 conversation.send_message(

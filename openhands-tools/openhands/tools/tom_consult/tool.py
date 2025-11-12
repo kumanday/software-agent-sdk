@@ -54,7 +54,7 @@ class TomConsultTool(ToolDefinition[ConsultTomAction, ConsultTomObservation]):
         api_key: str | None = None,
         api_base: str | None = None,
     ) -> Sequence[ToolDefinition[Any, Any]]:
-        """Initialize Tom tools with executor parameters.
+        """Initialize Tom consult tool with executor parameters.
 
         Args:
             conv_state: Conversation state (required by
@@ -65,13 +65,13 @@ class TomConsultTool(ToolDefinition[ConsultTomAction, ConsultTomObservation]):
             api_base: Base URL for Tom agent's LLM
 
         Returns:
-            Sequence containing TomConsultTool and SleeptimeComputeTool
+            Sequence containing TomConsultTool instance
         """
         # conv_state required by registry but not used - state passed at execution time
         _ = conv_state
         file_store = LocalFileStore(root="~/.openhands")
 
-        # Initialize the executor (shared by both tools)
+        # Initialize the executor
         executor = TomConsultExecutor(
             file_store=file_store,
             enable_rag=enable_rag,
@@ -80,20 +80,62 @@ class TomConsultTool(ToolDefinition[ConsultTomAction, ConsultTomObservation]):
             api_base=api_base,
         )
 
-        # Return both tools using the same executor
         return [
             cls(
-                name="consult_tom_agent",
                 description=_CONSULT_DESCRIPTION,
                 action_type=ConsultTomAction,
                 observation_type=ConsultTomObservation,
                 executor=executor,
-            ),
-            ToolDefinition(
-                name="sleeptime_compute",
+            )
+        ]
+
+
+class SleeptimeComputeTool(
+    ToolDefinition[SleeptimeComputeAction, SleeptimeComputeObservation]
+):
+    """Tool for indexing conversations for Tom's user modeling."""
+
+    @classmethod
+    @override
+    def create(
+        cls,
+        conv_state: "ConversationState",
+        enable_rag: bool = True,
+        llm_model: str | None = None,
+        api_key: str | None = None,
+        api_base: str | None = None,
+    ) -> Sequence[ToolDefinition[Any, Any]]:
+        """Initialize sleeptime compute tool with executor parameters.
+
+        Args:
+            conv_state: Conversation state (required by
+            registry, state passed at runtime)
+            enable_rag: Whether to enable RAG in Tom agent
+            llm_model: LLM model to use for Tom agent
+            api_key: API key for Tom agent's LLM
+            api_base: Base URL for Tom agent's LLM
+
+        Returns:
+            Sequence containing SleeptimeComputeTool instance
+        """
+        # conv_state required by registry but not used - state passed at execution time
+        _ = conv_state
+        file_store = LocalFileStore(root="~/.openhands")
+
+        # Initialize the executor
+        executor = TomConsultExecutor(
+            file_store=file_store,
+            enable_rag=enable_rag,
+            llm_model=llm_model,
+            api_key=api_key,
+            api_base=api_base,
+        )
+
+        return [
+            cls(
                 description=_SLEEPTIME_DESCRIPTION,
                 action_type=SleeptimeComputeAction,
                 observation_type=SleeptimeComputeObservation,
                 executor=executor,
-            ),
+            )
         ]

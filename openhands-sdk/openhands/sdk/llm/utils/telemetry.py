@@ -44,6 +44,7 @@ class Telemetry(BaseModel):
     _req_ctx: dict[str, Any] = PrivateAttr(default_factory=dict)
     _last_latency: float = PrivateAttr(default=0.0)
     _log_callback: Callable[[str, str], None] | None = PrivateAttr(default=None)
+    _stats_update_callback: Callable[[], None] | None = PrivateAttr(default=None)
 
     model_config: ClassVar[ConfigDict] = ConfigDict(
         extra="forbid", arbitrary_types_allowed=True
@@ -58,6 +59,15 @@ class Telemetry(BaseModel):
                      Used for streaming logs in remote execution contexts.
         """
         self._log_callback = callback
+
+    def set_stats_update_callback(self, callback: Callable[[], None] | None) -> None:
+        """Set a callback function to be notified when stats are updated.
+
+        Args:
+            callback: A function called whenever metrics are updated.
+                     Used for streaming stats updates in remote execution contexts.
+        """
+        self._stats_update_callback = callback
 
     def on_request(self, log_ctx: dict | None) -> None:
         self._req_start = time.time()
@@ -96,6 +106,13 @@ class Telemetry(BaseModel):
         # 4) optional logging
         if self.log_enabled:
             self.log_llm_call(resp, cost, raw_resp=raw_resp)
+
+        # 5) notify about stats update
+        if self._stats_update_callback is not None:
+            try:
+                self._stats_update_callback()
+            except Exception:
+                logger.exception("Stats update callback failed", exc_info=True)
 
         return self.metrics.deep_copy()
 

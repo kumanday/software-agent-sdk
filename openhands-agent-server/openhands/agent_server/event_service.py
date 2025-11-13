@@ -256,6 +256,23 @@ class EventService:
                 if telemetry is not None:
                     telemetry.set_log_callback(log_callback)
 
+    def _setup_stats_streaming(self, agent: Agent) -> None:
+        """Configure stats update callbacks to stream stats changes via events."""
+
+        def stats_update_callback() -> None:
+            """Callback to emit stats updates as ConversationStateUpdateEvent."""
+            # Schedule state update in the main event loop
+            if self._main_loop and self._main_loop.is_running():
+                asyncio.run_coroutine_threadsafe(
+                    self._publish_state_update(keys=["stats"]), self._main_loop
+                )
+
+        # Set callback for all LLMs in the agent
+        for llm in agent.get_all_llms():
+            telemetry = getattr(llm, "telemetry", None)
+            if telemetry is not None:
+                telemetry.set_stats_update_callback(stats_update_callback)
+
     async def start(self):
         # Store the main event loop for cross-thread communication
         self._main_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
@@ -269,6 +286,9 @@ class EventService:
 
         # Setup LLM log streaming for remote execution
         self._setup_llm_log_streaming(agent)
+
+        # Setup stats streaming for remote execution
+        self._setup_stats_streaming(agent)
 
         conversation = LocalConversation(
             agent=agent,
@@ -380,17 +400,33 @@ class EventService:
             raise ValueError("inactive_service")
         return self._conversation._state
 
-    async def _publish_state_update(self):
-        """Publish a ConversationStateUpdateEvent with the current state."""
+    async def _publish_state_update(self, keys: list[str] | None = None):
+        """Publish a ConversationStateUpdateEvent with the current state.
+
+        Args:
+            keys: Optional list of field keys to include in the update.
+                 If None, publishes the full state. If provided, only publishes
+                 the specified fields.
+        """
         if not self._conversation:
             return
 
         state = self._conversation._state
         with state:
-            # Create state update event with current state information
-            state_update_event = ConversationStateUpdateEvent.from_conversation_state(
-                state
-            )
+            if keys is None:
+                # Full state update
+                state_update_event = (
+                    ConversationStateUpdateEvent.from_conversation_state(state)
+                )
+            else:
+                # Selective field update - create events for each key
+                for key in keys:
+                    value = getattr(state, key, None)
+                    state_update_event = ConversationStateUpdateEvent(
+                        key=key, value=value
+                    )
+                    await self._pub_sub(state_update_event)
+                return
 
             # Publish the state update event
             await self._pub_sub(state_update_event)

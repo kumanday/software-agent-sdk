@@ -28,6 +28,7 @@ from openhands.sdk.utils.pydantic_secrets import serialize_secret, validate_secr
 if TYPE_CHECKING:  # type hints only, avoid runtime import cycle
     from openhands.sdk.tool.tool import ToolDefinition
 
+from openhands.sdk.utils.deprecation import deprecated, warn_deprecated
 from openhands.sdk.utils.pydantic_diff import pretty_pydantic_diff
 
 
@@ -94,10 +95,7 @@ LLM_RETRY_EXCEPTIONS: tuple[type[Exception], ...] = (
     LLMNoResponseError,
 )
 
-SERVICE_ID_DEPRECATION_MSG = (
-    "LLM.service_id is deprecated and will be removed in a future release; "
-    "use LLM.usage_id instead."
-)
+SERVICE_ID_DEPRECATION_DETAILS = "Use LLM.usage_id instead of LLM.service_id."
 
 
 class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
@@ -317,9 +315,9 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         d = dict(data)
 
         if "service_id" in d and "usage_id" not in d:
-            warnings.warn(
-                SERVICE_ID_DEPRECATION_MSG,
-                DeprecationWarning,
+            warn_deprecated(
+                "LLM.service_id",
+                details=SERVICE_ID_DEPRECATION_DETAILS,
                 stacklevel=3,
             )
             d["usage_id"] = d.pop("service_id")
@@ -405,21 +403,13 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
     # Public API
     # =========================================================================
     @property
+    @deprecated(details=SERVICE_ID_DEPRECATION_DETAILS)
     def service_id(self) -> str:
-        warnings.warn(
-            SERVICE_ID_DEPRECATION_MSG,
-            DeprecationWarning,
-            stacklevel=2,
-        )
         return self.usage_id
 
     @service_id.setter
+    @deprecated(details=SERVICE_ID_DEPRECATION_DETAILS)
     def service_id(self, value: str) -> None:
-        warnings.warn(
-            SERVICE_ID_DEPRECATION_MSG,
-            DeprecationWarning,
-            stacklevel=2,
-        )
         self.usage_id = value
 
     @property

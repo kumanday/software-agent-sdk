@@ -1,5 +1,11 @@
 """Utility functions for the OpenHands SDK."""
 
+from .deprecation import (
+    DEFAULT_DEPRECATED_IN,
+    DEFAULT_REMOVED_IN,
+    deprecated,
+    warn_deprecated,
+)
 from .truncate import (
     DEFAULT_TEXT_CONTENT_LIMIT,
     DEFAULT_TRUNCATE_NOTICE,
@@ -10,5 +16,9 @@ from .truncate import (
 __all__ = [
     "DEFAULT_TEXT_CONTENT_LIMIT",
     "DEFAULT_TRUNCATE_NOTICE",
+    "DEFAULT_DEPRECATED_IN",
+    "DEFAULT_REMOVED_IN",
     "maybe_truncate",
+    "deprecated",
+    "warn_deprecated",
 ]

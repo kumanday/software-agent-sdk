@@ -3,6 +3,7 @@ import os
 import time
 import uuid
 import warnings
+from collections.abc import Callable
 from typing import Any, ClassVar
 
 from litellm.cost_calculator import completion_cost as litellm_completion_cost
@@ -42,12 +43,22 @@ class Telemetry(BaseModel):
     _req_start: float = PrivateAttr(default=0.0)
     _req_ctx: dict[str, Any] = PrivateAttr(default_factory=dict)
     _last_latency: float = PrivateAttr(default=0.0)
+    _log_callback: Callable[[str, str], None] | None = PrivateAttr(default=None)
 
     model_config: ClassVar[ConfigDict] = ConfigDict(
         extra="forbid", arbitrary_types_allowed=True
     )
 
     # ---------- Lifecycle ----------
+    def set_log_callback(self, callback: Callable[[str, str], None] | None) -> None:
+        """Set a callback function for logging instead of writing to file.
+
+        Args:
+            callback: A function that takes (filename, log_data) and handles the log.
+                     Used for streaming logs in remote execution contexts.
+        """
+        self._log_callback = callback
+
     def on_request(self, log_ctx: dict | None) -> None:
         self._req_start = time.time()
         self._req_ctx = log_ctx or {}
@@ -221,19 +232,13 @@ class Telemetry(BaseModel):
         if not self.log_dir:
             return
         try:
-            # Create log directory if it doesn't exist
-            os.makedirs(self.log_dir, exist_ok=True)
-            if not os.access(self.log_dir, os.W_OK):
-                raise PermissionError(f"log_dir is not writable: {self.log_dir}")
-
-            fname = os.path.join(
-                self.log_dir,
-                (
-                    f"{self.model_name.replace('/', '__')}-"
-                    f"{time.time():.3f}-"
-                    f"{uuid.uuid4().hex[:4]}.json"
-                ),
+            # Prepare filename and log data
+            filename = (
+                f"{self.model_name.replace('/', '__')}-"
+                f"{time.time():.3f}-"
+                f"{uuid.uuid4().hex[:4]}.json"
             )
+
             data = self._req_ctx.copy()
             data["response"] = (
                 resp  # ModelResponse | ResponsesAPIResponse;
@@ -297,8 +302,21 @@ class Telemetry(BaseModel):
                 and "tools" in data["kwargs"]
             ):
                 data["kwargs"].pop("tools")
-            with open(fname, "w") as f:
-                f.write(json.dumps(data, default=_safe_json))
+
+            log_data = json.dumps(data, default=_safe_json)
+
+            # Use callback if set (for remote execution), otherwise write to file
+            if self._log_callback:
+                self._log_callback(filename, log_data)
+            else:
+                # Create log directory if it doesn't exist
+                os.makedirs(self.log_dir, exist_ok=True)
+                if not os.access(self.log_dir, os.W_OK):
+                    raise PermissionError(f"log_dir is not writable: {self.log_dir}")
+
+                fname = os.path.join(self.log_dir, filename)
+                with open(fname, "w") as f:
+                    f.write(log_data)
         except Exception as e:
             warnings.warn(f"Telemetry logging failed: {e}")
 

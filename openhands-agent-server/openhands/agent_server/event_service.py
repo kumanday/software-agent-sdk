@@ -20,6 +20,7 @@ from openhands.sdk.conversation.state import (
     ConversationState,
 )
 from openhands.sdk.event.conversation_state import ConversationStateUpdateEvent
+from openhands.sdk.event.llm_completion_log import LLMCompletionLogEvent
 from openhands.sdk.security.analyzer import SecurityAnalyzerBase
 from openhands.sdk.security.confirmation_policy import ConfirmationPolicyBase
 from openhands.sdk.utils.async_utils import AsyncCallbackWrapper
@@ -231,6 +232,30 @@ class EventService:
     async def unsubscribe_from_events(self, subscriber_id: UUID) -> bool:
         return self._pub_sub.unsubscribe(subscriber_id)
 
+    def _setup_llm_log_streaming(self, agent: Agent) -> None:
+        """Configure LLM log callbacks to stream logs via events."""
+
+        def log_callback(filename: str, log_data: str) -> None:
+            """Callback to emit LLM completion logs as events."""
+            # Extract model name from filename (format: model__timestamp_uuid.json)
+            model_name = filename.split("-")[0].replace("__", "/")
+            event = LLMCompletionLogEvent(
+                filename=filename,
+                log_data=log_data,
+                model_name=model_name,
+            )
+            # Publish to all subscribers - schedule in the main event loop
+            if self._main_loop and self._main_loop.is_running():
+                asyncio.run_coroutine_threadsafe(self._pub_sub(event), self._main_loop)
+
+        # Set callback for all LLMs in the agent that have logging enabled
+        for llm in agent.get_all_llms():
+            if llm.log_completions:
+                # Access telemetry safely
+                telemetry = getattr(llm, "telemetry", None)
+                if telemetry is not None:
+                    telemetry.set_log_callback(log_callback)
+
     async def start(self):
         # Store the main event loop for cross-thread communication
         self._main_loop: asyncio.AbstractEventLoop = asyncio.get_running_loop()
@@ -241,6 +266,10 @@ class EventService:
         assert isinstance(workspace, LocalWorkspace)
         Path(workspace.working_dir).mkdir(parents=True, exist_ok=True)
         agent = Agent.model_validate(self.stored.agent.model_dump())
+
+        # Setup LLM log streaming for remote execution
+        self._setup_llm_log_streaming(agent)
+
         conversation = LocalConversation(
             agent=agent,
             workspace=workspace,

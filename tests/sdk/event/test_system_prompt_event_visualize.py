@@ -30,7 +30,7 @@ def test_visualize_no_data_mutation():
 
     # Call visualize multiple times
     for _ in range(3):
-        _ = event.visualize()
+        _ = event.visualize
 
     # Verify no mutation occurred
     assert event.tools[0] == initial_tool_state
@@ -67,7 +67,7 @@ def test_visualize_parameter_truncation():
     )
 
     # Get visualization
-    visualization = event.visualize()
+    visualization = event.visualize
     visualization_text = visualization.plain
 
     # Find parameters line
@@ -106,7 +106,7 @@ def test_visualize_string_truncation_logic():
     original_desc_len = len(tool["function"]["description"])  # type: ignore[index]
 
     # Call visualize
-    visualization = event.visualize()
+    visualization = event.visualize
     visualization_text = visualization.plain
 
     # Verify original data unchanged

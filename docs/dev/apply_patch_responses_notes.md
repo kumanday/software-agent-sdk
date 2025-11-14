@@ -17,8 +17,8 @@ We integrated an ApplyPatch tool modeled after OpenAI's cookbook for GPT-5.1 "se
 
 ## Responses pipeline adjustments
 
-- Do not echo prior-turn `reasoning` items in input; this can violate ordering constraints.
-- Include assistant `function_call` items in the input and the paired `function_call_output` items produced by tools. This satisfies the server's validation that an output must correspond to a previous call in the same input batch.
+- Reasoning passthrough: we DO include the prior-turn `reasoning` item in input (test `test_assistant_includes_reasoning_passthrough` depends on this). It must not be the last input item; it should be followed by at least one other item (message or function_call), which our serializer ensures by ordering.
+- Assistant tool calls: we include assistant `function_call` items in input and pair them with `function_call_output` items produced by tools in the same request. This satisfies the server's validation that an output must correspond to a previous call in the same input batch.
 
 ## Remaining issue
 

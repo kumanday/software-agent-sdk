@@ -100,7 +100,7 @@ jobs:
 
             - name: Trigger evaluation workflow
               env:
-                  PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+                  PAT_TOKEN: ${{ secrets.ALLHANDS_BOT_GITHUB_PAT }}
                   SDK_REPO: https://github.com/${{ github.repository }}
                   SDK_REF: ${{ steps.params.outputs.sdk_ref }}
                   PR_NUMBER: ${{ steps.params.outputs.pr_number }}

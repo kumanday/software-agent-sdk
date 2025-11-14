@@ -116,14 +116,12 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
     _skip_user_messages: bool
     _highlight_patterns: dict[str, str]
     _mode: str
-    _show_metrics_in_concise: bool
 
     def __init__(
         self,
         mode: str = "verbose",
         highlight_regex: dict[str, str] | None = DEFAULT_HIGHLIGHT_REGEX,
         skip_user_messages: bool = False,
-        show_metrics_in_concise: bool = False,
     ):
         """Initialize the visualizer.
 
@@ -136,14 +134,12 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
                            "Thought:": "bold green"}
             skip_user_messages: If True, skip displaying user messages. Useful for
                                 scenarios where user input is not relevant to show.
-            show_metrics_in_concise: If True, show token metrics even in concise mode
         """
         super().__init__()
         self._console = Console()
         self._skip_user_messages = skip_user_messages
         self._highlight_patterns = highlight_regex or {}
         self._mode = mode.lower()
-        self._show_metrics_in_concise = show_metrics_in_concise
 
         if self._mode not in ("verbose", "concise"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'verbose' or 'concise'")

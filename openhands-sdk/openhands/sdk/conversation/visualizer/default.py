@@ -1,7 +1,7 @@
 import re
 
-from rich.console import Console
-from rich.panel import Panel
+from rich.console import Console, Group
+from rich.rule import Rule
 from rich.text import Text
 
 from openhands.sdk.conversation.visualizer.base import (
@@ -46,45 +46,118 @@ DEFAULT_HIGHLIGHT_REGEX = {
     r"\*(.*?)\*": "italic",
 }
 
-_PANEL_PADDING = (1, 1)
+
+def indent_content(content: Text, spaces: int = 4) -> Text:
+    """Indent content for visual hierarchy while preserving all formatting."""
+    prefix = " " * spaces
+    lines = content.split("\n")
+
+    indented = Text()
+    for i, line in enumerate(lines):
+        if i > 0:
+            indented.append("\n")
+        indented.append(prefix)
+        indented.append(line)
+
+    return indented
+
+
+def section_header(title: str, color: str) -> Rule:
+    """Create a semantic divider with title."""
+    return Rule(
+        f"[{color} bold]{title}[/{color} bold]",
+        style=color,
+        characters="─",
+        align="left",
+    )
+
+
+def build_event_block(
+    content: Text,
+    title: str,
+    title_color: str,
+    subtitle: str | None = None,
+    indent: bool = False,
+) -> Group:
+    """Build a complete event block with header, content, and optional subtitle."""
+    parts = []
+
+    # Header with rule
+    parts.append(section_header(title, title_color))
+    parts.append(Text())  # Blank line after header
+
+    # Content (optionally indented)
+    if indent:
+        parts.append(indent_content(content))
+    else:
+        parts.append(content)
+
+    # Subtitle (metrics) if provided
+    if subtitle:
+        parts.append(Text())  # Blank line before subtitle
+        subtitle_text = Text.from_markup(subtitle)
+        subtitle_text.stylize("dim")
+        parts.append(indent_content(subtitle_text, spaces=4))
+
+    parts.append(Text())  # Blank line after block
+
+    return Group(*parts)
 
 
 class DefaultConversationVisualizer(ConversationVisualizerBase):
     """Handles visualization of conversation events with Rich formatting.
 
-    Provides Rich-formatted output with panels and complete content display.
+    Provides dual-mode output:
+    - Verbose: Full detail with rich formatting, indentation, and metrics
+    - Concise: Minimal 1-2 line summaries for quick scanning
     """
 
     _console: Console
     _skip_user_messages: bool
     _highlight_patterns: dict[str, str]
+    _mode: str
+    _show_metrics_in_concise: bool
 
     def __init__(
         self,
+        mode: str = "verbose",
         highlight_regex: dict[str, str] | None = DEFAULT_HIGHLIGHT_REGEX,
         skip_user_messages: bool = False,
+        show_metrics_in_concise: bool = False,
     ):
         """Initialize the visualizer.
 
         Args:
+            mode: Visualization mode - "verbose" or "concise"
             highlight_regex: Dictionary mapping regex patterns to Rich color styles
                            for highlighting keywords in the visualizer.
+                           Only used in verbose mode.
                            For example: {"Reasoning:": "bold blue",
                            "Thought:": "bold green"}
             skip_user_messages: If True, skip displaying user messages. Useful for
                                 scenarios where user input is not relevant to show.
+            show_metrics_in_concise: If True, show token metrics even in concise mode
         """
         super().__init__()
         self._console = Console()
         self._skip_user_messages = skip_user_messages
         self._highlight_patterns = highlight_regex or {}
+        self._mode = mode.lower()
+        self._show_metrics_in_concise = show_metrics_in_concise
+
+        if self._mode not in ("verbose", "concise"):
+            raise ValueError(f"Invalid mode: {mode}. Must be 'verbose' or 'concise'")
 
     def on_event(self, event: Event) -> None:
         """Main event handler that displays events with Rich formatting."""
-        panel = self._create_event_panel(event)
-        if panel:
-            self._console.print(panel)
-            self._console.print()  # Add spacing between events
+        if self._mode == "verbose":
+            output = self._create_verbose_panel(event)
+            if output:
+                self._console.print(output)
+        else:  # concise mode
+            output = self._create_concise_line(event)
+            if output:
+                self._console.print(output)
 
     def _apply_highlighting(self, text: Text) -> Text:
         """Apply regex-based highlighting to text content.
@@ -108,8 +181,8 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
 
         return highlighted
 
-    def _create_event_panel(self, event: Event) -> Panel | None:
-        """Create a Rich Panel for the event with appropriate styling."""
+    def _create_verbose_panel(self, event: Event) -> Group | None:
+        """Create a verbose Rich panel for the event with full detail."""
         # Use the event's visualize property for content
         content = event.visualize
 
@@ -122,50 +195,34 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
 
         # Determine panel styling based on event type
         if isinstance(event, SystemPromptEvent):
-            title = f"[bold {_SYSTEM_COLOR}]System Prompt[/bold {_SYSTEM_COLOR}]"
-            return Panel(
-                content,
-                title=title,
-                border_style=_SYSTEM_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
+            return build_event_block(
+                content=content,
+                title="System Prompt",
+                title_color=_SYSTEM_COLOR,
             )
         elif isinstance(event, ActionEvent):
             # Check if action is None (non-executable)
             if event.action is None:
-                title = (
-                    f"[bold {_ACTION_COLOR}]Agent Action (Not Executed)"
-                    f"[/bold {_ACTION_COLOR}]"
-                )
+                title = "Agent Action (Not Executed)"
             else:
-                title = f"[bold {_ACTION_COLOR}]Agent Action[/bold {_ACTION_COLOR}]"
-            return Panel(
-                content,
+                title = "Agent Action"
+            return build_event_block(
+                content=content,
                 title=title,
+                title_color=_ACTION_COLOR,
                 subtitle=self._format_metrics_subtitle(),
-                border_style=_ACTION_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
             )
         elif isinstance(event, ObservationEvent):
-            title = (
-                f"[bold {_OBSERVATION_COLOR}]Observation[/bold {_OBSERVATION_COLOR}]"
-            )
-            return Panel(
-                content,
-                title=title,
-                border_style=_OBSERVATION_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
+            return build_event_block(
+                content=content,
+                title="Observation",
+                title_color=_OBSERVATION_COLOR,
             )
         elif isinstance(event, UserRejectObservation):
-            title = f"[bold {_ERROR_COLOR}]User Rejected Action[/bold {_ERROR_COLOR}]"
-            return Panel(
-                content,
-                title=title,
-                border_style=_ERROR_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
+            return build_event_block(
+                content=content,
+                title="User Rejected Action",
+                title_color=_ERROR_COLOR,
             )
         elif isinstance(event, MessageEvent):
             if (
@@ -184,75 +241,221 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
 
             # Simple titles for base visualizer
             if event.llm_message.role == "user":
-                title_text = f"[bold {role_color}]Message from User[/bold {role_color}]"
+                title = "Message from User"
             else:
-                title_text = (
-                    f"[bold {role_color}]Message from Agent[/bold {role_color}]"
-                )
+                title = "Message from Agent"
 
-            return Panel(
-                content,
-                title=title_text,
+            return build_event_block(
+                content=content,
+                title=title,
+                title_color=role_color,
                 subtitle=self._format_metrics_subtitle(),
-                border_style=role_color,
-                padding=_PANEL_PADDING,
-                expand=True,
             )
         elif isinstance(event, AgentErrorEvent):
-            title = f"[bold {_ERROR_COLOR}]Agent Error[/bold {_ERROR_COLOR}]"
-            return Panel(
-                content,
-                title=title,
+            return build_event_block(
+                content=content,
+                title="Agent Error",
+                title_color=_ERROR_COLOR,
                 subtitle=self._format_metrics_subtitle(),
-                border_style=_ERROR_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
             )
         elif isinstance(event, PauseEvent):
-            title = f"[bold {_PAUSE_COLOR}]User Paused[/bold {_PAUSE_COLOR}]"
-            return Panel(
-                content,
-                title=title,
-                border_style=_PAUSE_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
+            return build_event_block(
+                content=content,
+                title="User Paused",
+                title_color=_PAUSE_COLOR,
             )
         elif isinstance(event, Condensation):
-            title = f"[bold {_SYSTEM_COLOR}]Condensation[/bold {_SYSTEM_COLOR}]"
-            return Panel(
-                content,
-                title=title,
+            return build_event_block(
+                content=content,
+                title="Condensation",
+                title_color="white",
                 subtitle=self._format_metrics_subtitle(),
-                border_style=_SYSTEM_COLOR,
-                expand=True,
             )
-
         elif isinstance(event, CondensationRequest):
-            title = f"[bold {_SYSTEM_COLOR}]Condensation Request[/bold {_SYSTEM_COLOR}]"
-            return Panel(
-                content,
-                title=title,
-                border_style=_SYSTEM_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
+            return build_event_block(
+                content=content,
+                title="Condensation Request",
+                title_color=_SYSTEM_COLOR,
             )
         elif isinstance(event, ConversationStateUpdateEvent):
             # Skip visualizing conversation state updates - these are internal events
             return None
         else:
             # Fallback panel for unknown event types
-            title = (
-                f"[bold {_ERROR_COLOR}]UNKNOWN Event: "
-                f"{event.__class__.__name__}[/bold {_ERROR_COLOR}]"
-            )
-            return Panel(
-                content,
+            title = f"UNKNOWN Event: {event.__class__.__name__}"
+            subtitle = f"({event.source})"
+            return build_event_block(
+                content=content,
                 title=title,
-                subtitle=f"({event.source})",
-                border_style=_ERROR_COLOR,
-                padding=_PANEL_PADDING,
-                expand=True,
+                title_color=_ERROR_COLOR,
+                subtitle=subtitle,
             )
+
+    def _create_concise_line(self, event: Event) -> Text | None:
+        """Create a concise one-line summary of the event."""
+        line = Text()
+
+        if isinstance(event, SystemPromptEvent):
+            line.append("System", style=f"bold {_SYSTEM_COLOR}")
+            return line
+
+        elif isinstance(event, ActionEvent):
+            # Format: "Run: <tool_name> <brief_args>" or "Thinking" for reasoning
+            content = event.visualize.plain
+
+            # Check if this is a thinking/reasoning action
+            if "Reasoning:" in content or "Thought:" in content:
+                line.append("Thinking", style=f"{_THOUGHT_COLOR}")
+                return line
+
+            # Extract action name if available
+            if event.action:
+                action_name = event.action.__class__.__name__
+                line.append("Run: ", style=f"bold {_ACTION_COLOR}")
+                line.append(action_name, style=_ACTION_COLOR)
+
+                # Try to extract key arguments for context
+                args_preview = self._extract_action_preview(content)
+                if args_preview:
+                    line.append(f" {args_preview}")
+            else:
+                line.append("Action (Not Executed)", style=f"dim {_ACTION_COLOR}")
+
+            return line
+
+        elif isinstance(event, ObservationEvent):
+            # Format: "Read: <tool> returned X lines" or "Read: <tool> <result_summary>"
+            content = event.visualize.plain
+            line.append("Read: ", style=f"bold {_OBSERVATION_COLOR}")
+
+            # Extract tool name
+            tool_match = re.search(r"Tool:\s*(\w+)", content)
+            if tool_match:
+                tool_name = tool_match.group(1)
+                line.append(tool_name, style=_OBSERVATION_COLOR)
+
+                # Count lines in result
+                result_lines = content.count("\n")
+                if result_lines > 5:
+                    line.append(f" returned {result_lines} lines")
+                else:
+                    # Show brief result summary
+                    result_preview = self._extract_result_preview(content)
+                    if result_preview:
+                        line.append(f" → {result_preview}")
+            else:
+                line.append("observation", style=_OBSERVATION_COLOR)
+
+            return line
+
+        elif isinstance(event, UserRejectObservation):
+            line.append("Rejected: ", style=f"bold {_ERROR_COLOR}")
+            # Try to extract rejection reason
+            content = event.visualize.plain
+            reason_match = re.search(r"Rejection Reason:\s*(.+?)(?:\n|$)", content)
+            if reason_match:
+                reason = reason_match.group(1).strip()[:60]
+                line.append(reason, style=_ERROR_COLOR)
+            else:
+                line.append("User rejected action", style=_ERROR_COLOR)
+            return line
+
+        elif isinstance(event, MessageEvent):
+            if (
+                self._skip_user_messages
+                and event.llm_message
+                and event.llm_message.role == "user"
+            ):
+                return None
+
+            assert event.llm_message is not None
+            role = event.llm_message.role
+
+            if role == "user":
+                line.append("User: ", style=f"bold {_MESSAGE_USER_COLOR}")
+                # Show first line or truncated content
+                content = event.visualize.plain.strip()
+                preview = content.split("\n")[0][:80]
+                if len(content) > 80:
+                    preview += "..."
+                line.append(f'"{preview}"', style=_MESSAGE_USER_COLOR)
+            else:
+                line.append("Assistant: ", style=f"bold {_MESSAGE_ASSISTANT_COLOR}")
+                content = event.visualize.plain.strip()
+
+                # Count tokens or show character count
+                preview = content.split("\n")[0][:80]
+                if len(content) > 80:
+                    line.append(f"response ({len(content)} chars)")
+                else:
+                    line.append(f'"{preview}"')
+
+            return line
+
+        elif isinstance(event, AgentErrorEvent):
+            line.append("Error: ", style=f"bold {_ERROR_COLOR}")
+            content = event.visualize.plain.strip()
+            error_preview = content.split("\n")[0][:80]
+            line.append(error_preview, style=_ERROR_COLOR)
+            return line
+
+        elif isinstance(event, PauseEvent):
+            line.append("Paused", style=f"bold {_PAUSE_COLOR}")
+            return line
+
+        elif isinstance(event, Condensation):
+            line.append("Condensed", style="dim")
+            # Optionally show how many events were condensed
+            content = event.visualize.plain
+            line.append(f" ({len(content)} chars)")
+            return line
+
+        elif isinstance(event, CondensationRequest):
+            line.append("Condensation Request", style=f"dim {_SYSTEM_COLOR}")
+            return line
+
+        elif isinstance(event, ConversationStateUpdateEvent):
+            # Skip internal events in concise mode
+            return None
+
+        else:
+            # Unknown event type
+            line.append(
+                f"Unknown: {event.__class__.__name__}", style=f"dim {_ERROR_COLOR}"
+            )
+            return line
+
+    def _extract_action_preview(self, content: str) -> str:
+        """Extract a brief preview of action arguments for concise mode."""
+        # Try to extract key information like file paths, commands, etc.
+        lines = content.split("\n")
+
+        # Look for common patterns
+        for line in lines:
+            if "path:" in line.lower():
+                match = re.search(r"path:\s*(.+?)(?:\n|$)", line, re.IGNORECASE)
+                if match:
+                    return match.group(1).strip()
+            if "command:" in line.lower():
+                match = re.search(r"command:\s*(\w+)", line, re.IGNORECASE)
+                if match:
+                    cmd = match.group(1).strip()
+                    return f"({cmd})"
+
+        return ""
+
+    def _extract_result_preview(self, content: str) -> str:
+        """Extract a brief preview of observation result for concise mode."""
+        # Find the Result: section and grab first meaningful line
+        result_match = re.search(r"Result:\s*(.+?)(?:\n\n|\Z)", content, re.DOTALL)
+        if result_match:
+            result_text = result_match.group(1).strip()
+            # Get first non-empty line
+            for line in result_text.split("\n"):
+                line = line.strip()
+                if line and not line.startswith("Here's"):
+                    return line[:60] + ("..." if len(line) > 60 else "")
+        return ""
 
     def _format_metrics_subtitle(self) -> str | None:
         """Format LLM metrics as a visually appealing subtitle string with icons,

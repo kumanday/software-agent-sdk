@@ -30,42 +30,16 @@ class ObservationEvent(ObservationBaseEvent):
         ..., description="The action id that this observation is responding to"
     )
 
-    def visualize(self, concise: bool = False) -> Text:
-        """Return Rich Text representation of this observation event.
-
-        Args:
-            concise: If True, return a minimal 1-2 line summary.
-                    If False (default), return detailed verbose representation.
-        """
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this observation event."""
         to_viz = self.observation.visualize
         content = Text()
-
-        if concise:
-            # Concise mode: one-line summary
-            content.append("Read: ", style="bold yellow")
-            content.append(self.tool_name, style="yellow")
-
-            # Count lines in result
-            result_text = to_viz.plain
-            result_lines = result_text.count("\n")
-            if result_lines > 5:
-                content.append(f" returned {result_lines} lines")
-            else:
-                # Show brief result summary (first line)
-
-                first_line = result_text.strip().split("\n")[0]
-                if len(first_line) > 60:
-                    first_line = first_line[:57] + "..."
-                if first_line:
-                    content.append(f" → {first_line}")
-        else:
-            # Verbose mode: full detail
-            if to_viz.plain.strip():
-                content.append("Tool: ", style="bold")
-                content.append(self.tool_name)
-                content.append("\nResult:\n", style="bold")
-                content.append(to_viz)
-
+        if to_viz.plain.strip():
+            content.append("Tool: ", style="bold")
+            content.append(self.tool_name)
+            content.append("\nResult:\n", style="bold")
+            content.append(to_viz)
         return content
 
     def to_llm_message(self) -> Message:
@@ -99,29 +73,14 @@ class UserRejectObservation(ObservationBaseEvent):
         ..., description="The action id that this observation is responding to"
     )
 
-    def visualize(self, concise: bool = False) -> Text:
-        """Return Rich Text representation of this user rejection event.
-
-        Args:
-            concise: If True, return a minimal 1-2 line summary.
-                    If False (default), return detailed verbose representation.
-        """
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this user rejection event."""
         content = Text()
-
-        if concise:
-            # Concise mode: one-line summary
-            content.append("Rejected: ", style="bold red")
-            reason = self.rejection_reason[:60]
-            if len(self.rejection_reason) > 60:
-                reason += "..."
-            content.append(reason, style="red")
-        else:
-            # Verbose mode: full detail
-            content.append("Tool: ", style="bold")
-            content.append(self.tool_name)
-            content.append("\n\nRejection Reason:\n", style="bold")
-            content.append(self.rejection_reason)
-
+        content.append("Tool: ", style="bold")
+        content.append(self.tool_name)
+        content.append("\n\nRejection Reason:\n", style="bold")
+        content.append(self.rejection_reason)
         return content
 
     def to_llm_message(self) -> Message:
@@ -153,25 +112,12 @@ class AgentErrorEvent(ObservationBaseEvent):
     source: SourceType = "agent"
     error: str = Field(..., description="The error message from the scaffold")
 
-    def visualize(self, concise: bool = False) -> Text:
-        """Return Rich Text representation of this agent error event.
-
-        Args:
-            concise: If True, return a minimal 1-2 line summary.
-                    If False (default), return detailed verbose representation.
-        """
+    @property
+    def visualize(self) -> Text:
+        """Return Rich Text representation of this agent error event."""
         content = Text()
-
-        if concise:
-            # Concise mode: one-line summary
-            content.append("Error: ", style="bold red")
-            error_preview = self.error.split("\n")[0][:80]
-            content.append(error_preview, style="red")
-        else:
-            # Verbose mode: full detail
-            content.append("Error Details:\n", style="bold")
-            content.append(self.error)
-
+        content.append("Error Details:\n", style="bold")
+        content.append(self.error)
         return content
 
     def to_llm_message(self) -> Message:

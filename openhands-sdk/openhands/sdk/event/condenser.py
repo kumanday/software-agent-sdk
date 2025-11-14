@@ -33,27 +33,16 @@ class Condensation(Event):
 
     source: SourceType = "environment"
 
-    def visualize(self, concise: bool = False) -> Text:
-        """Return Rich Text representation of this condensation event.
-
-        Args:
-            concise: If True, return a minimal 1-2 line summary.
-                    If False (default), return detailed verbose representation.
-        """
+    @property
+    def visualize(self) -> Text:
         text = Text()
 
-        if concise:
-            # Concise mode: one-line summary
-            text.append("Condensed", style="dim")
-            text.append(f" ({len(self.forgotten_event_ids)} events)")
-        else:
-            # Verbose mode: full detail
-            text.append("Auto Conversation Condensation Triggered.\n", style="bold")
-            text.append(f"Forgetting {len(self.forgotten_event_ids)} events\n")
-            if self.summary:
-                text.append("\n[Summary of Events Being Forgotten]\n", style="bold")
-                text.append(f"{self.summary}\n")
+        text.append("Auto Conversation Condensation Triggered.\n", style="bold")
 
+        text.append(f"Forgetting {len(self.forgotten_event_ids)} events\n")
+        if self.summary:
+            text.append("\n[Summary of Events Being Forgotten]\n", style="bold")
+            text.append(f"{self.summary}\n")
         return text
 
 
@@ -66,27 +55,15 @@ class CondensationRequest(Event):
 
     source: SourceType = "environment"
 
-    def visualize(self, concise: bool = False) -> Text:
-        """Return Rich Text representation of this condensation request event.
-
-        Args:
-            concise: If True, return a minimal 1-2 line summary.
-                    If False (default), return detailed verbose representation.
-        """
+    @property
+    def visualize(self) -> Text:
         text = Text()
-
-        if concise:
-            # Concise mode: one-line summary
-            text.append("Condensation Request", style="dim magenta")
-        else:
-            # Verbose mode: full detail
-            text.append("Conversation Condensation Requested\n", style="bold")
-            message = (
-                "A condensation of the conversation history has been requested to "
-                "manage context window usage.\n"
-            )
-            text.append(message)
-
+        text.append("Conversation Condensation Requested\n", style="bold")
+        message = (
+            "A condensation of the conversation history has been requested to "
+            "manage context window usage.\n"
+        )
+        text.append(message)
         return text
 
 

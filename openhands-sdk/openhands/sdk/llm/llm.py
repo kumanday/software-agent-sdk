@@ -325,8 +325,8 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         if "service_id" in d and "usage_id" not in d:
             warn_deprecated(
                 "LLM.service_id",
-                deprecated_in="1.1.0",
-                removed_in="1.3.0",
+                deprecated_in="1.0.0",
+                removed_in="1.0.3",
                 details=SERVICE_ID_DEPRECATION_DETAILS,
                 stacklevel=3,
             )

@@ -79,8 +79,8 @@ class LLMRegistry:
 
     @property
     @deprecated(
-        deprecated_in="1.0.0",
-        removed_in="1.0.3",
+        deprecated_in="1.1.0",
+        removed_in="1.3.0",
         details=SERVICE_TO_LLM_DEPRECATION_DETAILS,
     )
     def service_to_llm(self) -> dict[str, LLM]:  # pragma: no cover - compatibility shim
@@ -139,8 +139,8 @@ class LLMRegistry:
         return list(self._usage_to_llm.keys())
 
     @deprecated(
-        deprecated_in="1.0.0",
-        removed_in="1.0.3",
+        deprecated_in="1.1.0",
+        removed_in="1.3.0",
         details=LIST_SERVICES_DEPRECATION_DETAILS,
     )
     def list_services(self) -> list[str]:  # pragma: no cover - compatibility shim

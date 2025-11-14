@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, ClassVar, Literal, get_args, get_origin
 
+import httpx  # noqa: F401
 from pydantic import (
     AliasChoices,
     BaseModel,
@@ -325,8 +326,8 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         if "service_id" in d and "usage_id" not in d:
             warn_deprecated(
                 "LLM.service_id",
-                deprecated_in="1.0.0",
-                removed_in="1.0.3",
+                deprecated_in="1.1.0",
+                removed_in="1.3.0",
                 details=SERVICE_ID_DEPRECATION_DETAILS,
                 stacklevel=3,
             )

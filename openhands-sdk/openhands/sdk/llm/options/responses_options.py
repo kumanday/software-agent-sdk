@@ -50,7 +50,11 @@ def select_responses_options(
         if llm.reasoning_summary:
             out["reasoning"]["summary"] = llm.reasoning_summary
 
-    # Always forward extra_body if provided; let the LLM provider validate
+    # Only send prompt_cache_retention for GPT-5.1 models; do not touch extra_body
+    if "gpt-5.1" in llm.model.lower() and llm.prompt_cache_retention:
+        out["prompt_cache_retention"] = llm.prompt_cache_retention
+
+    # Pass through user-provided extra_body unchanged
     if llm.litellm_extra_body:
         out["extra_body"] = llm.litellm_extra_body
 

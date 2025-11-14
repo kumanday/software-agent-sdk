@@ -216,6 +216,8 @@ def test_supports_stop_words_false_models(model):
 @pytest.mark.parametrize(
     "model,expected_responses",
     [
+        ("gpt-5.1", True),
+        ("openai/gpt-5.1-mini", True),
         ("gpt-5", True),
         ("openai/gpt-5-mini", True),
         ("codex-mini-latest", True),

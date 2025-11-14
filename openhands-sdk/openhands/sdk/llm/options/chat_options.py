@@ -76,26 +76,12 @@ def select_chat_options(
         out.pop("tools", None)
         out.pop("tool_choice", None)
 
-    # Build extra_body with provider-aware filtering
-    # - Only GPT-5.1 models should receive `prompt_cache_retention`
-    # - For non-GPT-5.1, strip it even if user set it in litellm_extra_body
-    model_lower = llm.model.lower()
-    is_gpt_5_1 = "gpt-5.1" in model_lower
+    # Only send prompt_cache_retention for GPT-5.1 models; do not touch extra_body
+    if "gpt-5.1" in llm.model.lower() and llm.prompt_cache_retention:
+        out["prompt_cache_retention"] = llm.prompt_cache_retention
 
-    extra_body: dict[str, Any] = {}
+    # Pass through user-provided extra_body unchanged
     if llm.litellm_extra_body:
-        extra_body = dict(llm.litellm_extra_body)
-
-    if is_gpt_5_1:
-        # Add default retention if not explicitly provided
-        if llm.prompt_cache_retention and "prompt_cache_retention" not in extra_body:
-            extra_body["prompt_cache_retention"] = llm.prompt_cache_retention
-    else:
-        # Ensure we do NOT send prompt_cache_retention for non-GPT-5.1 models
-        if "prompt_cache_retention" in extra_body:
-            extra_body.pop("prompt_cache_retention", None)
-
-    if extra_body:
-        out["extra_body"] = extra_body
+        out["extra_body"] = llm.litellm_extra_body
 
     return out

@@ -1,6 +1,6 @@
 # ApplyPatch + OpenAI Responses Integration Notes
 
-Status: in progress
+Status: fixed and validated
 Branch: feat/apply-patch-tool-gpt5-1
 PR: https://github.com/OpenHands/software-agent-sdk/pull/1166
 
@@ -38,3 +38,25 @@ We integrated an ApplyPatch tool modeled after OpenAI's cookbook for GPT-5.1 "se
 
 - Enable `log_completions=True` to inspect requests/responses under `logs/completions/`.
 - Compare call_id values across turns and ensure consistency.
+
+## Minimal paired example (ApplyPatch)
+
+The Responses input array for a successful ApplyPatch turn includes:
+- assistant function_call: name "apply_patch", arguments {"patch": "*** Begin Patch ... *** End Patch"}
+- tool function_call_output: call_id equal to the assistant function_call's call_id; output contains the observation text, e.g., "Done!"
+
+Example (abridged):
+
+[
+  {"type": "function_call", "call_id": "fc_call_abc", "name": "apply_patch", "arguments": "{...}"},
+  {"type": "function_call_output", "call_id": "fc_call_abc", "output": "Done!"}
+]
+
+This pairing is required by OpenAI; otherwise, a 400 error is returned.
+
+## FileEditor vs ApplyPatch
+
+- Both tools now produce a text observation to ensure function_call_output is serialized.
+- ApplyPatch is a server-known tool; we advertise a minimal schema (only name and a minimal parameters stub) to nudge the model to pass a 'patch' field.
+- Telemetry now trims giant system instructions for readability and logs compact tool metadata.
+

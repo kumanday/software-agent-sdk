@@ -97,7 +97,7 @@ def build_event_block(
         parts.append(Text())  # Blank line before subtitle
         subtitle_text = Text.from_markup(subtitle)
         subtitle_text.stylize("dim")
-        parts.append(indent_content(subtitle_text, spaces=4))
+        parts.append(subtitle_text)
 
     parts.append(Text())  # Blank line after block
 

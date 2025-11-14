@@ -9,17 +9,14 @@ from openhands.sdk.conversation import (
     BaseConversation,
     Conversation,
     ConversationCallbackType,
+    ConversationExecutionStatus,
     LocalConversation,
     RemoteConversation,
 )
 from openhands.sdk.conversation.conversation_stats import ConversationStats
-from openhands.sdk.conversation.streaming_visualizer import (
-    StreamingConversationVisualizer,
-    create_streaming_visualizer,
-)
 from openhands.sdk.conversation.visualizer import (
-    ConversationVisualizer,
-    create_default_visualizer,
+    ConversationVisualizerBase,
+    DefaultConversationVisualizer,
 )
 from openhands.sdk.event import Event, LLMConvertibleEvent
 from openhands.sdk.event.llm_convertible import MessageEvent
@@ -47,7 +44,6 @@ from openhands.sdk.tool import (
     Action,
     Observation,
     Tool,
-    ToolBase,
     ToolDefinition,
     list_registered_tools,
     register_tool,
@@ -71,10 +67,8 @@ __all__ = [
     "LLMStreamChunk",
     "TokenCallbackType",
     "ConversationStats",
-    "ConversationVisualizer",
-    "StreamingConversationVisualizer",
-    "create_default_visualizer",
-    "create_streaming_visualizer",
+    "ConversationVisualizerBase",
+    "DefaultConversationVisualizer",
     "RegistryEvent",
     "Message",
     "TextContent",
@@ -83,7 +77,6 @@ __all__ = [
     "RedactedThinkingBlock",
     "Tool",
     "ToolDefinition",
-    "ToolBase",
     "AgentBase",
     "Agent",
     "Action",
@@ -98,6 +91,7 @@ __all__ = [
     "BaseConversation",
     "LocalConversation",
     "RemoteConversation",
+    "ConversationExecutionStatus",
     "ConversationCallbackType",
     "Event",
     "LLMConvertibleEvent",

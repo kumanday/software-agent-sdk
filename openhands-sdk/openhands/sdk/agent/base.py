@@ -1,20 +1,20 @@
 import os
 import re
 import sys
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
-import openhands.sdk.security.analyzer as analyzer
 from openhands.sdk.context.agent_context import AgentContext
 from openhands.sdk.context.condenser import CondenserBase, LLMSummarizingCondenser
 from openhands.sdk.context.prompts.prompt import render_template
 from openhands.sdk.llm import LLM
 from openhands.sdk.logger import get_logger
 from openhands.sdk.mcp import create_mcp_tools
-from openhands.sdk.security.llm_analyzer import LLMSecurityAnalyzer
+from openhands.sdk.security import analyzer
 from openhands.sdk.tool import BUILT_IN_TOOLS, Tool, ToolDefinition, resolve_tool
 from openhands.sdk.utils.models import DiscriminatedUnionMixin
 from openhands.sdk.utils.pydantic_diff import pretty_pydantic_diff
@@ -30,12 +30,22 @@ if TYPE_CHECKING:
 logger = get_logger(__name__)
 
 
+AGENT_SECURITY_ANALYZER_DEPRECATION_WARNING = (
+    "Agent.security_analyzer is deprecated and will be removed "
+    "in a future release.\n\n use `conversation = Conversation();"
+    "conversation.set_security_analyzer(...)` instead."
+)
+
+
 class AgentBase(DiscriminatedUnionMixin, ABC):
-    """Abstract base class for agents.
+    """Abstract base class for OpenHands agents.
+
     Agents are stateless and should be fully defined by their configuration.
+    This base class provides the common interface and functionality that all
+    agent implementations must follow.
     """
 
-    model_config: ConfigDict = ConfigDict(
+    model_config = ConfigDict(
         frozen=True,
         arbitrary_types_allowed=True,
     )
@@ -55,7 +65,7 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
         default_factory=list,
         description="List of tools to initialize for the agent.",
         examples=[
-            {"name": "BashTool", "params": {}},
+            {"name": "TerminalTool", "params": {}},
             {"name": "FileEditorTool", "params": {}},
             {
                 "name": "TaskTrackerTool",
@@ -108,17 +118,27 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
             }
         ],
     )
-    system_prompt_filename: str = Field(default="system_prompt.j2")
+    system_prompt_filename: str = Field(
+        default="system_prompt.j2",
+        description=(
+            "System prompt template filename. Can be either:\n"
+            "- A relative filename (e.g., 'system_prompt.j2') loaded from the "
+            "agent's prompts directory\n"
+            "- An absolute path (e.g., '/path/to/custom_prompt.j2')"
+        ),
+    )
     system_prompt_kwargs: dict[str, object] = Field(
         default_factory=dict,
         description="Optional kwargs to pass to the system prompt Jinja2 template.",
         examples=[{"cli_mode": True}],
     )
+
     security_analyzer: analyzer.SecurityAnalyzerBase | None = Field(
         default=None,
         description="Optional security analyzer to evaluate action risks.",
         examples=[{"kind": "LLMSecurityAnalyzer"}],
     )
+
     condenser: CondenserBase | None = Field(
         default=None,
         description="Optional condenser to use for condensing conversation history.",
@@ -139,6 +159,22 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
     # Runtime materialized tools; private and non-serializable
     _tools: dict[str, ToolDefinition] = PrivateAttr(default_factory=dict)
 
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_inputs(cls, data):
+        if not isinstance(data, dict):
+            return data
+        d = dict(data)
+
+        if "security_analyzer" in d and d["security_analyzer"]:
+            warnings.warn(
+                AGENT_SECURITY_ANALYZER_DEPRECATION_WARNING,
+                DeprecationWarning,
+                stacklevel=3,
+            )
+
+        return d
+
     @property
     def prompt_dir(self) -> str:
         """Returns the directory where this class's module file is located."""
@@ -156,13 +192,7 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
     @property
     def system_message(self) -> str:
         """Compute system message on-demand to maintain statelessness."""
-        # Prepare template kwargs, including cli_mode if available
         template_kwargs = dict(self.system_prompt_kwargs)
-        if self.security_analyzer:
-            template_kwargs["llm_security_analyzer"] = bool(
-                isinstance(self.security_analyzer, LLMSecurityAnalyzer)
-            )
-
         system_message = render_template(
             prompt_dir=self.prompt_dir,
             template_name=self.system_prompt_filename,
@@ -190,6 +220,16 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
 
     def _initialize(self, state: "ConversationState"):
         """Create an AgentBase instance from an AgentSpec."""
+
+        # 1) Migrate deprecated analyzer → state (if present)
+        if self.security_analyzer and not state.security_analyzer:
+            state.security_analyzer = self.security_analyzer
+            # 2) Clear on the immutable model (allowed via object.__setattr__)
+            try:
+                object.__setattr__(self, "security_analyzer", None)
+            except Exception:
+                logger.warning("Could not clear deprecated Agent.security_analyzer")
+
         if self._tools:
             logger.warning("Agent already initialized; skipping re-initialization.")
             return
@@ -215,7 +255,9 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
             )
 
         # Always include built-in tools; not subject to filtering
-        tools.extend(BUILT_IN_TOOLS)
+        # Instantiate built-in tools using their .create() method
+        for tool_class in BUILT_IN_TOOLS:
+            tools.extend(tool_class.create(state))
 
         # Check tool types
         for tool in tools:
@@ -248,7 +290,7 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
         2. Executing the tool
         3. Updating the conversation state with
             LLM calls (role="assistant") and tool results (role="tool")
-        4.1 If conversation is finished, set state.agent_status to FINISHED
+        4.1 If conversation is finished, set state.execution_status to FINISHED
         4.2 Otherwise, just return, Conversation will kick off the next step
 
         If the underlying LLM supports streaming, partial deltas are forwarded to
@@ -291,8 +333,6 @@ class AgentBase(DiscriminatedUnionMixin, ABC):
                 updates["condenser"] = new_condenser
 
         # Allow security_analyzer to differ - use the runtime (self) version
-        # This allows users to add/remove security analyzers mid-conversation
-        # (e.g., when switching to weaker LLMs that can't handle security_risk field)
         updates["security_analyzer"] = self.security_analyzer
 
         # Create maps by tool name for easy lookup

@@ -137,7 +137,12 @@ class Skill(BaseModel):
             trigger_keyword = f"/{agent_name}"
             if trigger_keyword not in keywords:
                 keywords.append(trigger_keyword)
-            inputs = metadata_dict.get("inputs", [])
+            inputs_raw = metadata_dict.get("inputs", [])
+            if not isinstance(inputs_raw, list):
+                raise SkillValidationError("inputs must be a list")
+            inputs: list[InputMetadata] = [
+                InputMetadata.model_validate(i) for i in inputs_raw
+            ]
             return Skill(
                 name=agent_name,
                 content=content,
@@ -155,13 +160,15 @@ class Skill(BaseModel):
             )
         else:
             # No triggers, default to None (always active)
-            mcp_tools_raw = metadata_dict.get("mcp_tools")
+            mcp_tools = metadata_dict.get("mcp_tools")
+            if not isinstance(mcp_tools, dict | None):
+                raise SkillValidationError("mcp_tools must be a dictionary or None")
             return Skill(
                 name=agent_name,
                 content=content,
                 source=str(path),
                 trigger=None,
-                mcp_tools=mcp_tools_raw,
+                mcp_tools=mcp_tools,
             )
 
     # Field-level validation for mcp_tools
@@ -300,3 +307,53 @@ def load_skills_from_dir(
         f"{[*repo_skills.keys(), *knowledge_skills.keys()]}"
     )
     return repo_skills, knowledge_skills
+
+
+# Default user skills directories (in order of priority)
+USER_SKILLS_DIRS = [
+    Path.home() / ".openhands" / "skills",
+    Path.home() / ".openhands" / "microagents",  # Legacy support
+]
+
+
+def load_user_skills() -> list[Skill]:
+    """Load skills from user's home directory.
+
+    Searches for skills in ~/.openhands/skills/ and ~/.openhands/microagents/
+    (legacy). Skills from both directories are merged, with skills/ taking
+    precedence for duplicate names.
+
+    Returns:
+        List of Skill objects loaded from user directories.
+        Returns empty list if no skills found or loading fails.
+    """
+    all_skills = []
+    seen_names = set()
+
+    for skills_dir in USER_SKILLS_DIRS:
+        if not skills_dir.exists():
+            logger.debug(f"User skills directory does not exist: {skills_dir}")
+            continue
+
+        try:
+            logger.debug(f"Loading user skills from {skills_dir}")
+            repo_skills, knowledge_skills = load_skills_from_dir(skills_dir)
+
+            # Merge repo and knowledge skills
+            for skills_dict in [repo_skills, knowledge_skills]:
+                for name, skill in skills_dict.items():
+                    if name not in seen_names:
+                        all_skills.append(skill)
+                        seen_names.add(name)
+                    else:
+                        logger.warning(
+                            f"Skipping duplicate skill '{name}' from {skills_dir}"
+                        )
+
+        except Exception as e:
+            logger.warning(f"Failed to load user skills from {skills_dir}: {str(e)}")
+
+    logger.debug(
+        f"Loaded {len(all_skills)} user skills: {[s.name for s in all_skills]}"
+    )
+    return all_skills

@@ -1,4 +1,5 @@
 import re
+from typing import Literal
 
 from rich.console import Console, Group
 from rich.rule import Rule
@@ -104,6 +105,9 @@ def build_event_block(
     return Group(*parts)
 
 
+ModeType = Literal["verbose", "concise"]
+
+
 class DefaultConversationVisualizer(ConversationVisualizerBase):
     """Handles visualization of conversation events with Rich formatting.
 
@@ -115,11 +119,11 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
     _console: Console
     _skip_user_messages: bool
     _highlight_patterns: dict[str, str]
-    _mode: str
+    _mode: ModeType
 
     def __init__(
         self,
-        mode: str = "verbose",
+        mode: ModeType = "verbose",
         highlight_regex: dict[str, str] | None = DEFAULT_HIGHLIGHT_REGEX,
         skip_user_messages: bool = False,
     ):
@@ -139,7 +143,7 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
         self._console = Console()
         self._skip_user_messages = skip_user_messages
         self._highlight_patterns = highlight_regex or {}
-        self._mode = mode.lower()
+        self._mode = mode
 
         if self._mode not in ("verbose", "concise"):
             raise ValueError(f"Invalid mode: {mode}. Must be 'verbose' or 'concise'")

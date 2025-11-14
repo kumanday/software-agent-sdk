@@ -9,11 +9,22 @@ class PauseEvent(Event):
 
     source: SourceType = "user"
 
-    @property
-    def visualize(self) -> Text:
-        """Return Rich Text representation of this pause event."""
+    def visualize(self, concise: bool = False) -> Text:
+        """Return Rich Text representation of this pause event.
+
+        Args:
+            concise: If True, return a minimal 1-2 line summary.
+                    If False (default), return detailed verbose representation.
+        """
         content = Text()
-        content.append("Conversation Paused", style="bold")
+
+        if concise:
+            # Concise mode: one-line summary
+            content.append("Paused", style="bold bright_yellow")
+        else:
+            # Verbose mode: full detail
+            content.append("Conversation Paused", style="bold")
+
         return content
 
     def __str__(self) -> str:

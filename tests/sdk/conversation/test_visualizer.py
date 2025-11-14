@@ -112,7 +112,7 @@ def test_system_prompt_event_visualize():
         ],
     )
 
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -136,7 +136,7 @@ def test_action_event_visualize():
         llm_response_id="response_456",
     )
 
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -165,7 +165,7 @@ def test_observation_event_visualize():
         tool_call_id="call_123",
     )
 
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -187,7 +187,7 @@ def test_message_event_visualize():
         extended_content=[TextContent(text="Additional context")],
     )
 
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -205,7 +205,7 @@ def test_agent_error_event_visualize():
         tool_name="terminal",
     )
 
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -217,7 +217,7 @@ def test_pause_event_visualize():
     """Test PauseEvent visualization."""
     event = PauseEvent()
 
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -229,7 +229,7 @@ def test_conversation_visualizer_initialization():
     visualizer = DefaultConversationVisualizer()
     assert visualizer is not None
     assert hasattr(visualizer, "on_event")
-    assert hasattr(visualizer, "_create_event_panel")
+    assert hasattr(visualizer, "_create_verbose_panel")
 
 
 def test_visualizer_event_panel_creation():
@@ -247,9 +247,12 @@ def test_visualizer_event_panel_creation():
         tool_call=tool_call,
         llm_response_id="response_1",
     )
-    panel = conv_viz._create_event_panel(action_event)
+    panel = conv_viz._create_verbose_panel(action_event)
     assert panel is not None
-    assert hasattr(panel, "renderable")
+    # Panel is now a Group object from Rich
+    from rich.console import Group
+
+    assert isinstance(panel, Group)
 
 
 def test_visualizer_action_event_with_none_action_panel():
@@ -264,12 +267,19 @@ def test_visualizer_action_event_with_none_action_panel():
         llm_response_id="resp_viz_1",
         action=None,
     )
-    panel = visualizer._create_event_panel(action_event)
+    panel = visualizer._create_verbose_panel(action_event)
     assert panel is not None
+    # Convert Group to string to check content
+    from rich.console import Console
+
+    console = Console()
+    with console.capture() as capture:
+        console.print(panel)
+    output = capture.get()
     # Ensure it doesn't fall back to UNKNOWN
-    assert "UNKNOWN Event" not in str(panel.title)
+    assert "UNKNOWN Event" not in output
     # And uses the 'Agent Action (Not Executed)' title
-    assert "Agent Action (Not Executed)" in str(panel.title)
+    assert "Agent Action (Not Executed)" in output
 
 
 def test_visualizer_user_reject_observation_panel():
@@ -282,33 +292,41 @@ def test_visualizer_user_reject_observation_panel():
         rejection_reason="User rejected the proposed action.",
     )
 
-    panel = visualizer._create_event_panel(event)
+    panel = visualizer._create_verbose_panel(event)
     assert panel is not None
-    title = str(panel.title)
-    assert "UNKNOWN Event" not in title
-    assert "User Rejected Action" in title
+    # Convert Group to string to check content
+    from rich.console import Console
+
+    console = Console()
+    with console.capture() as capture:
+        console.print(panel)
+    output = capture.get()
+    assert "UNKNOWN Event" not in output
+    assert "User Rejected Action" in output
     # ensure the reason is part of the renderable text
-    renderable = panel.renderable
-    assert isinstance(renderable, Text)
-    assert "User rejected the proposed action." in renderable.plain
+    assert "User rejected the proposed action." in output
 
 
 def test_visualizer_condensation_request_panel():
     """CondensationRequest should render a system-styled panel with friendly text."""
     visualizer = DefaultConversationVisualizer()
     event = CondensationRequest()
-    panel = visualizer._create_event_panel(event)
+    panel = visualizer._create_verbose_panel(event)
     assert panel is not None
+    # Convert Group to string to check content
+    from rich.console import Console
+
+    console = Console()
+    with console.capture() as capture:
+        console.print(panel)
+    output = capture.get()
     # Should not fall back to UNKNOWN
-    assert "UNKNOWN Event" not in str(panel.title)
+    assert "UNKNOWN Event" not in output
     # Title should indicate condensation request (case-insensitive check on substring)
-    assert "Condensation Request" in str(panel.title)
+    assert "Condensation Request" in output
     # Body should be the friendly visualize text
-    renderable = panel.renderable
-    assert isinstance(renderable, Text)
-    body = renderable.plain
-    assert "Conversation Condensation Requested" in body
-    assert "condensation of the conversation history" in body
+    assert "Conversation Condensation Requested" in output
+    assert "condensation of the conversation history" in output
 
 
 def test_metrics_formatting():
@@ -407,7 +425,7 @@ def test_event_base_fallback_visualize():
         source: SourceType = "agent"
 
     event = UnknownEvent()
-    result = event.visualize
+    result = event.visualize()
     assert isinstance(result, Text)
 
     text_content = result.plain
@@ -419,6 +437,6 @@ def test_visualizer_conversation_state_update_event_skipped():
     visualizer = DefaultConversationVisualizer()
     event = ConversationStateUpdateEvent(key="execution_status", value="finished")
 
-    panel = visualizer._create_event_panel(event)
+    panel = visualizer._create_verbose_panel(event)
     # Should return None to skip visualization
     assert panel is None

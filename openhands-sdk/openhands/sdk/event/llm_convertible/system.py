@@ -18,34 +18,45 @@ class SystemPromptEvent(LLMConvertibleEvent):
         ..., description="List of tools in OpenAI tool format"
     )
 
-    @property
-    def visualize(self) -> Text:
-        """Return Rich Text representation of this system prompt event."""
+    def visualize(self, concise: bool = False) -> Text:
+        """Return Rich Text representation of this system prompt event.
+
+        Args:
+            concise: If True, return a minimal 1-2 line summary.
+                    If False (default), return detailed verbose representation.
+        """
         content = Text()
-        content.append("System Prompt:\n", style="bold")
-        content.append(self.system_prompt.text)
-        content.append(f"\n\nTools Available: {len(self.tools)}")
-        for tool in self.tools:
-            # Build display-only copy to avoid mutating event data
-            tool_display = {
-                k: (v[:27] + "..." if isinstance(v, str) and len(v) > 30 else v)
-                for k, v in tool.items()
-            }
-            tool_fn = tool_display.get("function", None)
-            if tool_fn and isinstance(tool_fn, dict):
-                assert "name" in tool_fn
-                assert "description" in tool_fn
-                assert "parameters" in tool_fn
-                params_str = json.dumps(tool_fn["parameters"])
-                if len(params_str) > 200:
-                    params_str = params_str[:197] + "..."
-                content.append(
-                    f"\n  - {tool_fn['name']}: "
-                    f"{tool_fn['description'].split('\n')[0][:100]}...\n",
-                )
-                content.append(f"  Parameters: {params_str}")
-            else:
-                content.append(f"\n  - Cannot access .function for {tool_display}")
+
+        if concise:
+            # Concise mode: one-line summary
+            content.append("System", style="bold magenta")
+        else:
+            # Verbose mode: full detail
+            content.append("System Prompt:\n", style="bold")
+            content.append(self.system_prompt.text)
+            content.append(f"\n\nTools Available: {len(self.tools)}")
+            for tool in self.tools:
+                # Build display-only copy to avoid mutating event data
+                tool_display = {
+                    k: (v[:27] + "..." if isinstance(v, str) and len(v) > 30 else v)
+                    for k, v in tool.items()
+                }
+                tool_fn = tool_display.get("function", None)
+                if tool_fn and isinstance(tool_fn, dict):
+                    assert "name" in tool_fn
+                    assert "description" in tool_fn
+                    assert "parameters" in tool_fn
+                    params_str = json.dumps(tool_fn["parameters"])
+                    if len(params_str) > 200:
+                        params_str = params_str[:197] + "..."
+                    content.append(
+                        f"\n  - {tool_fn['name']}: "
+                        f"{tool_fn['description'].split('\n')[0][:100]}...\n",
+                    )
+                    content.append(f"  Parameters: {params_str}")
+                else:
+                    content.append(f"\n  - Cannot access .function for {tool_display}")
+
         return content
 
     def to_llm_message(self) -> Message:

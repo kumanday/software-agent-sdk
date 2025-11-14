@@ -60,46 +60,76 @@ class MessageEvent(LLMConvertibleEvent):
         """Return the Anthropic thinking blocks from the LLM message."""
         return self.llm_message.thinking_blocks
 
-    @property
-    def visualize(self) -> Text:
-        """Return Rich Text representation of this message event."""
+    def visualize(self, concise: bool = False) -> Text:
+        """Return Rich Text representation of this message event.
+
+        Args:
+            concise: If True, return a minimal 1-2 line summary.
+                    If False (default), return detailed verbose representation.
+        """
         content = Text()
 
-        # Message text content
-        text_parts = content_to_str(self.llm_message.content)
-        if text_parts:
-            full_content = "".join(text_parts)
-            content.append(full_content)
+        if concise:
+            # Concise mode: one-line summary
+            role = self.llm_message.role
+
+            if role == "user":
+                content.append("User: ", style="bold gold3")
+                # Show first line or truncated content
+                text_parts = content_to_str(self.llm_message.content)
+                text_content = "".join(text_parts).strip() if text_parts else ""
+                preview = text_content.split("\n")[0][:80]
+                if len(text_content) > 80:
+                    preview += "..."
+                content.append(f'"{preview}"', style="gold3")
+            else:
+                content.append("Assistant: ", style="bold blue")
+                text_parts = content_to_str(self.llm_message.content)
+                text_content = "".join(text_parts).strip() if text_parts else ""
+
+                # Count tokens or show character count
+                preview = text_content.split("\n")[0][:80]
+                if len(text_content) > 80:
+                    content.append(f"response ({len(text_content)} chars)")
+                else:
+                    content.append(f'"{preview}"')
         else:
-            content.append("[no text content]")
+            # Verbose mode: full detail
+            # Message text content
+            text_parts = content_to_str(self.llm_message.content)
+            if text_parts:
+                full_content = "".join(text_parts)
+                content.append(full_content)
+            else:
+                content.append("[no text content]")
 
-        # Responses API reasoning (plaintext only; never render encrypted_content)
-        reasoning_item = self.llm_message.responses_reasoning_item
-        if reasoning_item is not None:
-            content.append("\n\nReasoning:\n", style="bold")
-            if reasoning_item.summary:
-                for s in reasoning_item.summary:
-                    content.append(f"- {s}\n")
-            if reasoning_item.content:
-                for b in reasoning_item.content:
-                    content.append(f"{b}\n")
+            # Responses API reasoning (plaintext only; never render encrypted_content)
+            reasoning_item = self.llm_message.responses_reasoning_item
+            if reasoning_item is not None:
+                content.append("\n\nReasoning:\n", style="bold")
+                if reasoning_item.summary:
+                    for s in reasoning_item.summary:
+                        content.append(f"- {s}\n")
+                if reasoning_item.content:
+                    for b in reasoning_item.content:
+                        content.append(f"{b}\n")
 
-        # Add skill information if present
-        if self.activated_skills:
-            content.append(
-                f"\n\nActivated Skills: {', '.join(self.activated_skills)}",
-            )
+            # Add skill information if present
+            if self.activated_skills:
+                content.append(
+                    f"\n\nActivated Skills: {', '.join(self.activated_skills)}",
+                )
 
-        # Add extended content if available
-        if self.extended_content:
-            assert not any(
-                isinstance(c, ImageContent) for c in self.extended_content
-            ), "Extended content should not contain images"
-            text_parts = content_to_str(self.extended_content)
-            content.append(
-                "\n\nPrompt Extension based on Agent Context:\n", style="bold"
-            )
-            content.append(" ".join(text_parts))
+            # Add extended content if available
+            if self.extended_content:
+                assert not any(
+                    isinstance(c, ImageContent) for c in self.extended_content
+                ), "Extended content should not contain images"
+                text_parts = content_to_str(self.extended_content)
+                content.append(
+                    "\n\nPrompt Extension based on Agent Context:\n", style="bold"
+                )
+                content.append(" ".join(text_parts))
 
         return content
 

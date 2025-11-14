@@ -155,9 +155,23 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
             if output:
                 self._console.print(output)
         else:  # concise mode
-            output = self._create_concise_line(event)
-            if output:
-                self._console.print(output)
+            # Skip user messages if configured
+            if (
+                self._skip_user_messages
+                and isinstance(event, MessageEvent)
+                and event.llm_message
+                and event.llm_message.role == "user"
+            ):
+                return
+
+            # Skip internal conversation state updates
+            if isinstance(event, ConversationStateUpdateEvent):
+                return
+
+            # Get concise visualization from the event itself
+            content = event.visualize(concise=True)
+            if content.plain.strip():
+                self._console.print(content)
 
     def _apply_highlighting(self, text: Text) -> Text:
         """Apply regex-based highlighting to text content.
@@ -183,8 +197,8 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
 
     def _create_verbose_panel(self, event: Event) -> Group | None:
         """Create a verbose Rich panel for the event with full detail."""
-        # Use the event's visualize property for content
-        content = event.visualize
+        # Use the event's visualize method for content (verbose mode)
+        content = event.visualize(concise=False)
 
         if not content.plain.strip():
             return None
@@ -290,172 +304,6 @@ class DefaultConversationVisualizer(ConversationVisualizerBase):
                 title_color=_ERROR_COLOR,
                 subtitle=subtitle,
             )
-
-    def _create_concise_line(self, event: Event) -> Text | None:
-        """Create a concise one-line summary of the event."""
-        line = Text()
-
-        if isinstance(event, SystemPromptEvent):
-            line.append("System", style=f"bold {_SYSTEM_COLOR}")
-            return line
-
-        elif isinstance(event, ActionEvent):
-            # Format: "Run: <tool_name> <brief_args>" or "Thinking" for reasoning
-            content = event.visualize.plain
-
-            # Check if this is a thinking/reasoning action
-            if "Reasoning:" in content or "Thought:" in content:
-                line.append("Thinking", style=f"{_THOUGHT_COLOR}")
-                return line
-
-            # Extract action name if available
-            if event.action:
-                action_name = event.action.__class__.__name__
-                line.append("Run: ", style=f"bold {_ACTION_COLOR}")
-                line.append(action_name, style=_ACTION_COLOR)
-
-                # Try to extract key arguments for context
-                args_preview = self._extract_action_preview(content)
-                if args_preview:
-                    line.append(f" {args_preview}")
-            else:
-                line.append("Action (Not Executed)", style=f"dim {_ACTION_COLOR}")
-
-            return line
-
-        elif isinstance(event, ObservationEvent):
-            # Format: "Read: <tool> returned X lines" or "Read: <tool> <result_summary>"
-            content = event.visualize.plain
-            line.append("Read: ", style=f"bold {_OBSERVATION_COLOR}")
-
-            # Extract tool name
-            tool_match = re.search(r"Tool:\s*(\w+)", content)
-            if tool_match:
-                tool_name = tool_match.group(1)
-                line.append(tool_name, style=_OBSERVATION_COLOR)
-
-                # Count lines in result
-                result_lines = content.count("\n")
-                if result_lines > 5:
-                    line.append(f" returned {result_lines} lines")
-                else:
-                    # Show brief result summary
-                    result_preview = self._extract_result_preview(content)
-                    if result_preview:
-                        line.append(f" → {result_preview}")
-            else:
-                line.append("observation", style=_OBSERVATION_COLOR)
-
-            return line
-
-        elif isinstance(event, UserRejectObservation):
-            line.append("Rejected: ", style=f"bold {_ERROR_COLOR}")
-            # Try to extract rejection reason
-            content = event.visualize.plain
-            reason_match = re.search(r"Rejection Reason:\s*(.+?)(?:\n|$)", content)
-            if reason_match:
-                reason = reason_match.group(1).strip()[:60]
-                line.append(reason, style=_ERROR_COLOR)
-            else:
-                line.append("User rejected action", style=_ERROR_COLOR)
-            return line
-
-        elif isinstance(event, MessageEvent):
-            if (
-                self._skip_user_messages
-                and event.llm_message
-                and event.llm_message.role == "user"
-            ):
-                return None
-
-            assert event.llm_message is not None
-            role = event.llm_message.role
-
-            if role == "user":
-                line.append("User: ", style=f"bold {_MESSAGE_USER_COLOR}")
-                # Show first line or truncated content
-                content = event.visualize.plain.strip()
-                preview = content.split("\n")[0][:80]
-                if len(content) > 80:
-                    preview += "..."
-                line.append(f'"{preview}"', style=_MESSAGE_USER_COLOR)
-            else:
-                line.append("Assistant: ", style=f"bold {_MESSAGE_ASSISTANT_COLOR}")
-                content = event.visualize.plain.strip()
-
-                # Count tokens or show character count
-                preview = content.split("\n")[0][:80]
-                if len(content) > 80:
-                    line.append(f"response ({len(content)} chars)")
-                else:
-                    line.append(f'"{preview}"')
-
-            return line
-
-        elif isinstance(event, AgentErrorEvent):
-            line.append("Error: ", style=f"bold {_ERROR_COLOR}")
-            content = event.visualize.plain.strip()
-            error_preview = content.split("\n")[0][:80]
-            line.append(error_preview, style=_ERROR_COLOR)
-            return line
-
-        elif isinstance(event, PauseEvent):
-            line.append("Paused", style=f"bold {_PAUSE_COLOR}")
-            return line
-
-        elif isinstance(event, Condensation):
-            line.append("Condensed", style="dim")
-            # Optionally show how many events were condensed
-            content = event.visualize.plain
-            line.append(f" ({len(content)} chars)")
-            return line
-
-        elif isinstance(event, CondensationRequest):
-            line.append("Condensation Request", style=f"dim {_SYSTEM_COLOR}")
-            return line
-
-        elif isinstance(event, ConversationStateUpdateEvent):
-            # Skip internal events in concise mode
-            return None
-
-        else:
-            # Unknown event type
-            line.append(
-                f"Unknown: {event.__class__.__name__}", style=f"dim {_ERROR_COLOR}"
-            )
-            return line
-
-    def _extract_action_preview(self, content: str) -> str:
-        """Extract a brief preview of action arguments for concise mode."""
-        # Try to extract key information like file paths, commands, etc.
-        lines = content.split("\n")
-
-        # Look for common patterns
-        for line in lines:
-            if "path:" in line.lower():
-                match = re.search(r"path:\s*(.+?)(?:\n|$)", line, re.IGNORECASE)
-                if match:
-                    return match.group(1).strip()
-            if "command:" in line.lower():
-                match = re.search(r"command:\s*(\w+)", line, re.IGNORECASE)
-                if match:
-                    cmd = match.group(1).strip()
-                    return f"({cmd})"
-
-        return ""
-
-    def _extract_result_preview(self, content: str) -> str:
-        """Extract a brief preview of observation result for concise mode."""
-        # Find the Result: section and grab first meaningful line
-        result_match = re.search(r"Result:\s*(.+?)(?:\n\n|\Z)", content, re.DOTALL)
-        if result_match:
-            result_text = result_match.group(1).strip()
-            # Get first non-empty line
-            for line in result_text.split("\n"):
-                line = line.strip()
-                if line and not line.startswith("Here's"):
-                    return line[:60] + ("..." if len(line) > 60 else "")
-        return ""
 
     def _format_metrics_subtitle(self) -> str | None:
         """Format LLM metrics as a visually appealing subtitle string with icons,

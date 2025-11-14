@@ -58,3 +58,26 @@ def test_deprecated_decorator_allows_version_overrides(
     message = str(caught[0].message)
     assert f"as of {deprecated_in}" in message
     assert f"removed in {removed_in}" in message
+
+
+def test_warn_deprecated_allows_indefinite_removal() -> None:
+    with pytest.warns(DeprecatedWarning):
+        warn_deprecated(
+            "tests.indefinite",
+            deprecated_in="1.1.0",
+            removed_in=None,
+            details="Use tests.indefinite_replacement()",
+        )
+
+
+def test_deprecated_decorator_supports_indefinite_removal() -> None:
+    @deprecated(
+        deprecated_in="1.1.0",
+        removed_in=None,
+        details="Use replacement()",
+    )
+    def legacy() -> None:
+        return None
+
+    with pytest.warns(DeprecatedWarning):
+        legacy()

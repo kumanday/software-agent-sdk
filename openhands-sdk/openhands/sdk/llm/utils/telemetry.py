@@ -246,7 +246,8 @@ class Telemetry(BaseModel):
         cost: float | None,
         raw_resp: ModelResponse | ResponsesAPIResponse | None = None,
     ) -> None:
-        if not self.log_dir:
+        # Skip if neither file logging nor callback is configured
+        if not self.log_dir and not self._log_callback:
             return
         try:
             # Prepare filename and log data
@@ -325,7 +326,7 @@ class Telemetry(BaseModel):
             # Use callback if set (for remote execution), otherwise write to file
             if self._log_callback:
                 self._log_callback(filename, log_data)
-            else:
+            elif self.log_dir:
                 # Create log directory if it doesn't exist
                 os.makedirs(self.log_dir, exist_ok=True)
                 if not os.access(self.log_dir, os.W_OK):

@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import threading
 import uuid
 from collections.abc import Mapping
@@ -557,7 +558,6 @@ class RemoteConversation(BaseConversation):
 
     def _create_llm_completion_log_callback(self) -> ConversationCallbackType:
         """Create a callback that writes LLM completion logs to client filesystem."""
-        import os
 
         def callback(event: Event) -> None:
             if not isinstance(event, LLMCompletionLogEvent):

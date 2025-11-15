@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -25,6 +26,13 @@ if TYPE_CHECKING:
 
 
 class ApplyPatchAction(Action):
+    """Tool action schema specifying the patch to apply.
+
+    The patch must follow the exact text format described in the OpenAI
+    Cookbook's GPT-5.1 prompting guide. The executor parses this patch and
+    applies changes relative to the current workspace root.
+    """
+
     patch: str = Field(
         description=(
             "Patch content following the '*** Begin Patch' ... '*** End Patch' "
@@ -34,16 +42,36 @@ class ApplyPatchAction(Action):
 
 
 class ApplyPatchObservation(Observation):
+    """Result of applying a patch.
+
+    - message: human-readable summary of the changes or error
+    - fuzz: number of lines of fuzz used when applying hunks (0 means exact)
+    - commit: structured summary of the applied operations
+    """
+
     message: str = ""
     fuzz: int = 0
     commit: Commit | None = None
 
 
 class ApplyPatchExecutor(ToolExecutor[ApplyPatchAction, ApplyPatchObservation]):
+    """Executor that applies unified text patches within the workspace.
+
+    Uses the pure functions in core.py for parsing and applying patches. All
+    filesystem access is constrained to the agent's workspace_root.
+    """
+
     def __init__(self, workspace_root: str):
+        """Initialize executor with a workspace root.
+
+        Args:
+            workspace_root: Base directory relative to which all patch paths are
+                resolved. Absolute or path-escaping references are rejected.
+        """
         self.workspace_root = Path(workspace_root).resolve()
 
     def _resolve_path(self, p: str) -> Path:
+        """Resolve a file path into the workspace, disallowing escapes."""
         pth = (
             (self.workspace_root / p).resolve()
             if not p.startswith("/")
@@ -56,8 +84,10 @@ class ApplyPatchExecutor(ToolExecutor[ApplyPatchAction, ApplyPatchObservation]):
     def __call__(
         self,
         action: ApplyPatchAction,
-        conversation=None,  # noqa: ARG002
+        conversation=None,  # noqa: ARG002 - signature match
     ) -> ApplyPatchObservation:
+        """Execute the patch application and return an observation."""
+
         def open_file(path: str) -> str:
             fp = self._resolve_path(path)
             with open(fp, encoding="utf-8") as f:
@@ -97,8 +127,16 @@ _DESCRIPTION = (
 
 
 class ApplyPatchTool(ToolDefinition[ApplyPatchAction, ApplyPatchObservation]):
+    """ToolDefinition for applying unified text patches.
+
+    Creates an ApplyPatchExecutor bound to the current workspace and supplies a
+    concise description. The Responses tool schema is minimized to rely on
+    provider-known behavior for GPT-5.1 models.
+    """
+
     @classmethod
-    def create(cls, conv_state: ConversationState) -> list[ApplyPatchTool]:
+    def create(cls, conv_state: ConversationState) -> Sequence[ApplyPatchTool]:
+        """Initialize the tool for the active conversation state."""
         executor = ApplyPatchExecutor(workspace_root=conv_state.workspace.working_dir)
         return [
             cls(
@@ -123,9 +161,11 @@ class ApplyPatchTool(ToolDefinition[ApplyPatchAction, ApplyPatchObservation]):
         add_security_risk_prediction: bool = False,  # noqa: ARG002 - signature match
         action_type: type | None = None,  # noqa: ARG002 - signature match
     ) -> FunctionToolParam:  # type: ignore[override]
-        # Prefer server-known tool (name-only). However, some providers may
-        # require an argument schema to avoid empty-args calls. Provide a
-        # minimal parameters schema for 'patch' to guide the model.
+        """Serialize to OpenAI Responses function tool spec.
+
+        GPT-5.1 tools are known server-side. We return a minimal schema to ensure
+        the model includes the canonical 'patch' argument when calling this tool.
+        """
         return {
             "type": "function",
             "name": self.name,

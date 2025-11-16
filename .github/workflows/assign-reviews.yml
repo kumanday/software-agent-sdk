@@ -100,7 +100,7 @@ jobs:
                 3) If multiple maintainers qualify, avoid assigning too many reviews to any single one.
                 4) Request review from exactly one maintainer and add this message:
 
-                [Automatic Post]: I have assigned {reviewer} as a reviewer based on recent file changes and verified maintainer permissions.
+                [Automatic Post]: I have assigned {reviewer} as a reviewer based on git blame information.
                 Thanks in advance for the help!
 
             LLM_MODEL: litellm_proxy/claude-sonnet-4-5-20250929

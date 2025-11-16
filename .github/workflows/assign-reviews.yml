@@ -97,10 +97,7 @@ jobs:
                    - Preferred: GET /repos/{owner}/{repo}/collaborators/{username}/permission
                    - Alternative: GET /repos/{owner}/{repo}/collaborators?permission=push and filter results
                    Treat users as valid only if permission is one of: "push", "maintain", or "admin".
-                3) If multiple maintainers qualify, balance load by preferring the least-recently assigned reviewer across recent PRs and avoid assigning
-                more than ~3 open reviews to any single maintainer.
-                4) If no maintainer for the touched area is found, fall back to CODEOWNERS, otherwise pick a repo maintainer/admin. Never assign anyone
-                without write access.
+                3) If multiple maintainers qualify, avoid assigning too many reviews to any single one.
                 5) Request review from exactly one maintainer and add this message:
 
                 [Automatic Post]: I have assigned {reviewer} as a reviewer based on recent file changes and verified maintainer permissions.

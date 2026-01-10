@@ -1061,7 +1061,7 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
                     if item.get("type") == "message" and item.get("role") == "user":
                         content = item.get("content")
                         if not isinstance(content, list):
-                            content = []
+                            content = [content] if content else []
                         item["content"] = (
                             [{"type": "input_text", "text": prefix}] + content
                         )

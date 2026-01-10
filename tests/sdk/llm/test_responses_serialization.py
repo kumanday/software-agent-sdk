@@ -66,6 +66,21 @@ def test_subscription_codex_transport_does_not_use_top_level_instructions_and_pr
     assert "SYS" in content[0]["text"]
 
 
+def test_subscription_codex_transport_injects_synthetic_user_message_when_none_exists():
+    m_sys = Message(role="system", content=[TextContent(text="SYS")])
+    m_asst = Message(role="assistant", content=[TextContent(text="ASST")])
+
+    llm = LLM(model="gpt-5.1-codex", base_url="https://chatgpt.com/backend-api/codex")
+    instr, inputs = llm.format_messages_for_responses([m_sys, m_asst])
+
+    assert instr is None
+    assert len(inputs) >= 1
+    first = inputs[0]
+    assert first.get("type") == "message"
+    assert first.get("role") == "user"
+    assert "SYS" in first["content"][0]["text"]
+
+
 def test_api_codex_models_keep_system_as_instructions():
     m_sys = Message(role="system", content=[TextContent(text="SYS")])
     llm = LLM(model="gpt-5.1-codex")

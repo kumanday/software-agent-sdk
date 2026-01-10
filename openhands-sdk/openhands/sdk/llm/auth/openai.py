@@ -19,6 +19,7 @@ from aiohttp import web
 from authlib.common.security import generate_token
 from authlib.oauth2.rfc7636 import create_s256_code_challenge
 from httpx import AsyncClient
+import uuid
 
 from openhands.sdk.llm.auth.credentials import CredentialStore, OAuthCredentials
 from openhands.sdk.logger import get_logger
@@ -68,7 +69,8 @@ def _build_authorize_url(redirect_uri: str, code_challenge: str, state: str) -> 
         "id_token_add_organizations": "true",
         "codex_cli_simplified_flow": "true",
         "state": state,
-        "originator": "openhands",
+        # Match OpenCode's originator for the Codex OAuth flow.
+        "originator": "opencode",
     }
     return f"{ISSUER}/oauth/authorize?{urlencode(params)}"
 
@@ -389,7 +391,13 @@ class OpenAISubscriptionAuth:
             )
 
         uname = os.uname()
-        user_agent = f"openhands-sdk ({uname.sysname}; {uname.machine})"
+        # Match OpenCode's User-Agent shape as closely as possible.
+        user_agent = (
+            f"opencode/1.0.0 ({uname.sysname} {uname.release}; {uname.machine})"
+        )
+
+        # Generate a synthetic session_id header similar to OpenCode's sessionID.
+        session_id = str(uuid.uuid4())
 
         # Codex-specific extra_body parameters
         extra_body: dict[str, Any] = {
@@ -407,8 +415,9 @@ class OpenAISubscriptionAuth:
             base_url=CODEX_API_ENDPOINT.rsplit("/", 1)[0],
             api_key=creds.access_token,
             extra_headers={
-                "originator": "openhands",
+                "originator": "opencode",
                 "User-Agent": user_agent,
+                "session_id": session_id,
             },
             temperature=None,
             max_output_tokens=None,  # Codex doesn't support this

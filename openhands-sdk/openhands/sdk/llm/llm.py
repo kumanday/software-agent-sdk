@@ -1010,6 +1010,11 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         - Uses Message.to_responses_value to get either instructions (system)
          or input items (others)
         - Concatenates system instructions into a single instructions string
+
+        Codex subscription endpoints can reject complex/long `instructions`
+        ("Instructions are not valid"). For Codex models, we avoid sending
+        system prompts as top-level instructions and instead prepend them to
+        the first user message.
         """
         msgs = copy.deepcopy(messages)
 
@@ -1019,19 +1024,59 @@ class LLM(BaseModel, RetryMixin, NonNativeToolCallingMixin):
         # Assign system instructions as a string, collect input items
         instructions: str | None = None
         input_items: list[dict[str, Any]] = []
+        system_chunks: list[str] = []
+
+        # Codex-specific behavior gate: avoid top-level instructions entirely.
+        # Use raw model string to also catch provider-prefixed ids (e.g. openai/*).
+        is_codex_model = "codex" in (self.model or "").lower()
+
         for m in msgs:
             val = m.to_responses_value(vision_enabled=vision_active)
             if isinstance(val, str):
                 s = val.strip()
                 if not s:
                     continue
-                instructions = (
-                    s if instructions is None else f"{instructions}\n\n---\n\n{s}"
-                )
+                if is_codex_model:
+                    system_chunks.append(s)
+                else:
+                    instructions = (
+                        s
+                        if instructions is None
+                        else f"{instructions}\n\n---\n\n{s}"
+                    )
             else:
                 if val:
                     input_items.extend(val)
-        return instructions, input_items
+
+        if is_codex_model and system_chunks:
+            merged_system = "\n\n---\n\n".join(system_chunks).strip()
+            if merged_system:
+                prefix = f"Context (system prompt):\n{merged_system}\n\n"
+                injected = False
+                for item in input_items:
+                    if item.get("type") == "message" and item.get("role") == "user":
+                        content = item.get("content")
+                        if not isinstance(content, list):
+                            content = []
+                        item["content"] = (
+                            [{"type": "input_text", "text": prefix}] + content
+                        )
+                        injected = True
+                        break
+
+                if not injected:
+                    input_items.insert(
+                        0,
+                        {
+                            "type": "message",
+                            "role": "user",
+                            "content": [{"type": "input_text", "text": prefix}],
+                        },
+                    )
+
+        # For Codex models, keep top-level instructions empty to avoid
+        # server-validated instruction failures.
+        return (None if is_codex_model else instructions), input_items
 
     def get_token_count(self, messages: list[Message]) -> int:
         logger.debug(

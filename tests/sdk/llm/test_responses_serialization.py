@@ -48,6 +48,24 @@ def test_system_to_responses_value_instructions_concat():
     assert inputs == []
 
 
+def test_codex_models_do_not_use_top_level_instructions_and_prepend_system_to_user():
+    m_sys = Message(role="system", content=[TextContent(text="SYS")])
+    m_user = Message(role="user", content=[TextContent(text="USER")])
+
+    llm = LLM(model="gpt-5.1-codex")
+    instr, inputs = llm.format_messages_for_responses([m_sys, m_user])
+
+    assert instr is None
+    assert len(inputs) >= 1
+    first_user = next(
+        it for it in inputs if it.get("type") == "message" and it.get("role") == "user"
+    )
+    content = first_user.get("content")
+    assert isinstance(content, list)
+    assert content[0]["type"] == "input_text"
+    assert "SYS" in content[0]["text"]
+
+
 def test_user_to_responses_dict_with_and_without_vision():
     m = Message(
         role="user",

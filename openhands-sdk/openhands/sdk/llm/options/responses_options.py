@@ -6,6 +6,14 @@ from openhands.sdk.llm.options.common import apply_defaults_if_absent
 from openhands.sdk.llm.utils.model_features import get_features
 
 
+def _is_subscription_codex_transport(base_url: str | None) -> bool:
+    """Check if this is a ChatGPT subscription Codex transport."""
+    if not base_url:
+        return False
+    base = base_url.lower()
+    return "chatgpt.com" in base and "backend-api" in base and "codex" in base
+
+
 def select_responses_options(
     llm,
     user_kwargs: dict[str, Any],
@@ -14,6 +22,8 @@ def select_responses_options(
     store: bool | None,
 ) -> dict[str, Any]:
     """Behavior-preserving extraction of _normalize_responses_kwargs."""
+    is_codex_subscription = _is_subscription_codex_transport(llm.base_url)
+
     # Apply defaults for keys that are not forced by policy
     out = apply_defaults_if_absent(
         user_kwargs,
@@ -22,7 +32,28 @@ def select_responses_options(
         },
     )
 
-    # Enforce sampling/tool behavior for Responses path
+    # For Codex subscription, use minimal options to avoid validation errors
+    if is_codex_subscription:
+        # Codex subscription doesn't support these parameters
+        out.pop("max_output_tokens", None)
+        out.pop("temperature", None)
+        out.pop("tool_choice", None)
+        out.pop("reasoning", None)
+        out.pop("include", None)
+        out.pop("prompt_cache_retention", None)
+        # Codex requires store=false
+        out["store"] = False
+        # Codex backend requires streaming
+        out["stream"] = True
+        # Extra headers from llm config
+        if llm.extra_headers is not None and "extra_headers" not in out:
+            out["extra_headers"] = dict(llm.extra_headers)
+        # Pass through user-provided extra_body unchanged
+        if llm.litellm_extra_body:
+            out["extra_body"] = llm.litellm_extra_body
+        return out
+
+    # Enforce sampling/tool behavior for Responses path (non-Codex subscription)
     out["temperature"] = 1.0
     out["tool_choice"] = "auto"
 

@@ -70,7 +70,7 @@ def _build_authorize_url(redirect_uri: str, code_challenge: str, state: str) -> 
         "codex_cli_simplified_flow": "true",
         "state": state,
         # Match OpenCode's originator for the Codex OAuth flow.
-        "originator": "opencode",
+        "originator": "openhands",
     }
     return f"{ISSUER}/oauth/authorize?{urlencode(params)}"
 
@@ -393,7 +393,7 @@ class OpenAISubscriptionAuth:
         uname = os.uname()
         # Match OpenCode's User-Agent shape as closely as possible.
         user_agent = (
-            f"opencode/1.0.0 ({uname.sysname} {uname.release}; {uname.machine})"
+            f"openhands/1.0.0 ({uname.sysname} {uname.release}; {uname.machine})"
         )
 
         # Generate a synthetic session_id header similar to OpenCode's sessionID.
@@ -415,7 +415,7 @@ class OpenAISubscriptionAuth:
             base_url=CODEX_API_ENDPOINT.rsplit("/", 1)[0],
             api_key=creds.access_token,
             extra_headers={
-                "originator": "opencode",
+                "originator": "openhands",
                 "User-Agent": user_agent,
                 "session_id": session_id,
             },
